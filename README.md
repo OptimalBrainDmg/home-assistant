@@ -1,12 +1,13 @@
-# Home Assistant Arduino Sensors
+# Home Assistant Arduino Sketches
 
-Arduino firmware for DIY sensors that integrate with Home Assistant via MQTT auto-discovery. Each sketch targets a specific sensor use case and publishes data so Home Assistant entities appear automatically.
+Arduino firmware for DIY devices that integrate with Home Assistant via MQTT auto-discovery. Each sketch targets a specific use case and publishes data or accepts commands so Home Assistant entities appear automatically.
 
-## Sensors
+## Sketches
 
-| Sketch | Measures | HA Entities |
+| Sketch | Hardware | HA Entities |
 |--------|----------|-------------|
-| [`temp_humidity_sensor`](temp_humidity_sensor/) | Temperature & humidity | Temperature (°C), Humidity (%) |
+| [`temp_humidity_sensor`](temp_humidity_sensor/) | AM2320 or SHTC3 I2C sensor | Temperature (°C), Humidity (%) |
+| [`lightstrip`](lightstrip/) | WS2812B LED strip | Light (on/off, brightness, RGB color) |
 
 ## Setup
 

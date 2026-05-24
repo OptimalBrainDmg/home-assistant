@@ -8,6 +8,7 @@ Collection of Arduino sketches for ESP8266-based sensors that integrate with Hom
 
 Current sketches:
 - `temp_humidity_sensor/` — LOLIN D1 Mini V4 reading AM2320 or SHTC3 over I2C, publishing to HA via MQTT auto-discovery
+- `lightstrip/` — LOLIN D1 Mini V4 driving a WS2812B LED strip, exposed to HA as an MQTT light (on/off, brightness, RGB color)
 
 ## Conventions Across All Sketches
 
