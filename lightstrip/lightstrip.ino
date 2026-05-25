@@ -1,4 +1,4 @@
-#include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <PubSubClient.h>
 #include <Adafruit_NeoPixel.h>
 #include <ArduinoJson.h>
@@ -9,36 +9,41 @@
 // ══════════════════════════════════════════════════════════════════════════════
 
 // Uncomment exactly one mode:
-#define MODE_MULTI_STRIP   // independent strips, each on its own data pin
-// #define MODE_SEGMENTS   // one physical strip divided into named segments
+// #define MODE_MULTI_STRIP   // independent strips, each on its own data pin
+#define MODE_SEGMENTS         // one physical strip divided into named segments
 
 // ── Multi-strip configuration (MODE_MULTI_STRIP) ───────────────────────────────
 #if defined(MODE_MULTI_STRIP)
 
 struct StripConfig { const char* name; uint8_t pin; uint16_t numLeds; };
 static const StripConfig STRIPS[] = {
-  { "Desk Strip",  D2, 30 },
-  { "Shelf Strip", D5, 15 },
+  { "Desk Strip",  21, 30 },
+  { "Shelf Strip", 14, 15 },
 };
 #define NUM_ZONES (sizeof(STRIPS) / sizeof(STRIPS[0]))
 
 // ── Segment configuration (MODE_SEGMENTS) ─────────────────────────────────────
 #elif defined(MODE_SEGMENTS)
 
-#define SEG_PIN      D2
-#define SEG_NUM_LEDS 60   // total LEDs in the physical strip
+#define SEG_PIN      21
+#define SEG_NUM_LEDS 130    // total LEDs in the physical strip
 
 struct SegmentConfig { const char* name; uint16_t start; uint16_t count; };
 static const SegmentConfig SEGMENTS[] = {
-  { "Top Shelf",    0,  20 },
-  { "Middle Shelf", 20, 20 },
-  { "Bottom Shelf", 40, 20 },
+  { "Middle Shelf", 0,  65 },
+  { "Bottom Shelf", 65, 65 },
 };
 #define NUM_ZONES (sizeof(SEGMENTS) / sizeof(SEGMENTS[0]))
 
 #else
 #  error "Select a mode: uncomment MODE_MULTI_STRIP or MODE_SEGMENTS above"
 #endif
+
+// ── Brightness cap (both modes) ────────────────────────────────────────────────
+// Scales the full 0–255 brightness range to 0–(MAX_BRIGHTNESS_SCALE * 255).
+// Useful for keeping peak current within the power supply rating.
+// 1.0 = no cap, 0.9 = 90% max output, etc.
+#define MAX_BRIGHTNESS_SCALE 1.0f
 
 // ══════════════════════════════════════════════════════════════════════════════
 // END OF CONFIGURATION
@@ -67,24 +72,25 @@ PubSubClient mqtt(wifiClient);
 // ── Apply LED state for zone i ─────────────────────────────────────────────────
 void applyZone(int i) {
   ZoneState& s = zoneState[i];
+  uint8_t bri = (uint8_t)(s.brightness * MAX_BRIGHTNESS_SCALE);
 #if defined(MODE_MULTI_STRIP)
   Adafruit_NeoPixel& strip = *pixelStrips[i];
   if (!s.on) {
     strip.clear();
   } else {
     strip.fill(strip.Color(
-      (uint16_t)s.r * s.brightness / 255,
-      (uint16_t)s.g * s.brightness / 255,
-      (uint16_t)s.b * s.brightness / 255
+      (uint16_t)s.r * bri / 255,
+      (uint16_t)s.g * bri / 255,
+      (uint16_t)s.b * bri / 255
     ));
   }
   strip.show();
 #else
   uint32_t color = s.on
     ? pixelStrip.Color(
-        (uint16_t)s.r * s.brightness / 255,
-        (uint16_t)s.g * s.brightness / 255,
-        (uint16_t)s.b * s.brightness / 255)
+        (uint16_t)s.r * bri / 255,
+        (uint16_t)s.g * bri / 255,
+        (uint16_t)s.b * bri / 255)
     : 0;
   for (uint16_t j = SEGMENTS[i].start; j < SEGMENTS[i].start + SEGMENTS[i].count; j++)
     pixelStrip.setPixelColor(j, color);
@@ -95,20 +101,23 @@ void applyZone(int i) {
 // ── Publish state for zone i ───────────────────────────────────────────────────
 void publishState(int i) {
   ZoneState& s = zoneState[i];
-  StaticJsonDocument<128> doc;
+  StaticJsonDocument<192> doc;
   doc["state"]      = s.on ? "ON" : "OFF";
+  doc["color_mode"] = "rgb";
   doc["brightness"] = s.brightness;
   JsonObject color  = doc.createNestedObject("color");
   color["r"] = s.r;
   color["g"] = s.g;
   color["b"] = s.b;
-  char buf[128];
+  char buf[192];
   serializeJson(doc, buf);
   mqtt.publish(stateTopics[i].c_str(), buf, /*retain=*/true);
 }
 
 // ── MQTT command handler ───────────────────────────────────────────────────────
 void onMessage(char* topic, byte* payload, unsigned int len) {
+  Serial.print("RX: "); Serial.print(topic);
+  Serial.print(" "); Serial.write(payload, len); Serial.println();
   for (int i = 0; i < (int)NUM_ZONES; i++) {
     if (commandTopics[i] != topic) continue;
 
@@ -139,9 +148,9 @@ void publishDiscovery(int i) {
 #endif
 
   String dev = "{\"identifiers\":[\"" + deviceId + "\"],"
-               "\"name\":\"D1 Mini LED Strip\","
-               "\"model\":\"LOLIN D1 Mini V4\","
-               "\"manufacturer\":\"LOLIN\"}";
+               "\"name\":\"HUZZAH32 LED Strip\","
+               "\"model\":\"Adafruit HUZZAH32 ESP32 Feather\","
+               "\"manufacturer\":\"Adafruit\"}";
 
   String cfg =
     "{\"name\":\"" + String(zoneName) + "\","
@@ -149,8 +158,7 @@ void publishDiscovery(int i) {
     "\"schema\":\"json\","
     "\"command_topic\":\"" + commandTopics[i] + "\","
     "\"state_topic\":\"" + stateTopics[i] + "\","
-    "\"brightness\":true,"
-    "\"rgb\":true,"
+    "\"supported_color_modes\":[\"rgb\"],"
     "\"device\":" + dev + "}";
 
   mqtt.publish(discoveryTopics[i].c_str(), cfg.c_str(), /*retain=*/true);
@@ -176,7 +184,8 @@ void connectMQTT() {
     if (mqtt.connect(deviceId.c_str(), MQTT_USER, MQTT_PASS)) {
       Serial.println(" connected.");
       for (int i = 0; i < (int)NUM_ZONES; i++) {
-        mqtt.subscribe(commandTopics[i].c_str());
+        bool ok = mqtt.subscribe(commandTopics[i].c_str());
+        Serial.println(String("sub ") + commandTopics[i] + (ok ? " OK" : " FAIL"));
         publishDiscovery(i);
         publishState(i);
       }
@@ -191,7 +200,7 @@ void connectMQTT() {
 void setup() {
   Serial.begin(115200);
 
-  deviceId = "d1mini_" + String(ESP.getChipId(), HEX);
+  deviceId = "huzzah32_" + String((uint32_t)(ESP.getEfuseMac() >> 24), HEX);
 
   for (int i = 0; i < (int)NUM_ZONES; i++) {
     zoneState[i]       = { false, 255, 255, 255, 255 };

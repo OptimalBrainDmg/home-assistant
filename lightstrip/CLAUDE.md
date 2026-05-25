@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Arduino firmware for a LOLIN D1 Mini V4 (ESP8266) that drives WS2812B LED strips and exposes each zone to Home Assistant as an independent MQTT light (on/off, brightness, RGB color). Supports two mutually exclusive modes selected at compile time.
+Arduino firmware for an Adafruit HUZZAH32 ESP32 Feather that drives WS2812B LED strips and exposes each zone to Home Assistant as an independent MQTT light (on/off, brightness, RGB color). Supports two mutually exclusive modes selected at compile time.
 
 ## Modes
 
@@ -14,8 +14,8 @@ Multiple physically separate strips, each connected to its own data pin. Each st
 ```cpp
 struct StripConfig { const char* name; uint8_t pin; uint16_t numLeds; };
 static const StripConfig STRIPS[] = {
-  { "Desk Strip",  D2, 30 },
-  { "Shelf Strip", D5, 15 },
+  { "Desk Strip",  21, 30 },
+  { "Shelf Strip", 14, 15 },
 };
 ```
 
@@ -23,7 +23,7 @@ static const StripConfig STRIPS[] = {
 One physical strip wired to a single data pin, divided into named segments by LED index range. Each segment is an independent HA light entity; changing one segment does not disturb the others.
 
 ```cpp
-#define SEG_PIN      D2
+#define SEG_PIN      21
 #define SEG_NUM_LEDS 60
 
 struct SegmentConfig { const char* name; uint16_t start; uint16_t count; };
@@ -38,12 +38,12 @@ static const SegmentConfig SEGMENTS[] = {
 
 | Component | Connection |
 |-----------|-----------|
-| LOLIN D1 Mini V4 | ESP8266-based, 3.3V logic |
-| WS2812B strip(s) | Data → configurable pin(s), 5V power, GND common with D1 Mini |
+| Adafruit HUZZAH32 ESP32 Feather | ESP32-based, 3.3V logic |
+| WS2812B strip(s) | Data → configurable GPIO pin(s), 5V power, GND common with HUZZAH32 |
 
-Available 5V-tolerant data pins on D1 Mini: D1 (GPIO5), D2 (GPIO4), D5 (GPIO14), D6 (GPIO12), D7 (GPIO13). Avoid D3 (boot mode) and D4 (on-board LED).
+Available data pins on HUZZAH32: 14, 15, 21, 22, 25, 26, 27, 32, 33. Avoid GPIO 0 (boot button), 13 (onboard red LED), and 34–39 (input-only, no output).
 
-**Power note:** USB (500 mA) can safely drive roughly 10–15 LEDs at full white. For longer strips use an external 5V supply; connect its GND to the D1 Mini GND.
+**Power note:** USB (500 mA) can safely drive roughly 10–15 LEDs at full white. For longer strips use an external 5V supply; connect its GND to the HUZZAH32 GND.
 
 **Level shifting:** WS2812B data line expects 5V logic; most strips accept 3.3V but a 74AHCT125 level shifter improves reliability for longer runs.
 
@@ -59,18 +59,18 @@ Available 5V-tolerant data pins on D1 Mini: D1 (GPIO5), D2 (GPIO4), D5 (GPIO14),
 - **Adafruit NeoPixel** by Adafruit
 - **ArduinoJson** by Benoit Blanchon (v6.x — `StaticJsonDocument` API)
 - **PubSubClient** by Nick O'Leary
-- **ESP8266WiFi** (bundled with the ESP8266 board package)
+- **WiFi** (bundled with the ESP32 board package)
 
-Board package: `esp8266` by ESP8266 Community — add `http://arduino.esp8266.com/stable/package_esp8266com_index.json` to Board Manager URLs. Select board: **LOLIN(WEMOS) D1 mini**.
+Board package: `esp32` by Espressif — add `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json` to Board Manager URLs. Select board: **Adafruit ESP32 Feather**.
 
 ## Build & Flash
 
 ```bash
 # Compile
-arduino-cli compile --fqbn esp8266:esp8266:d1_mini .
+arduino-cli compile --fqbn esp32:esp32:featheresp32 .
 
 # Upload (find port with: arduino-cli board list)
-arduino-cli upload --fqbn esp8266:esp8266:d1_mini --port /dev/cu.usbserial-* .
+arduino-cli upload --fqbn esp32:esp32:featheresp32 --port /dev/cu.usbserial-* .
 
 # Monitor serial at 115200 baud
 arduino-cli monitor --port /dev/cu.usbserial-* --config baudrate=115200
@@ -88,7 +88,7 @@ Single-file sketch (`lightstrip.ino`). All user configuration lives in the block
   - Subscribe: `home/<deviceId>/light/<i>/set` — receives JSON commands from HA
   - Publish (retained): `home/<deviceId>/light/<i>/state` — current zone state
   - Publish (retained): `homeassistant/light/<deviceId>_zone<i>/config` — HA auto-discovery
-- **JSON schema**: HA's JSON light schema. Payloads carry `state` ("ON"/"OFF"), `brightness` (0–255), and `color` (`{"r":…,"g":…,"b":…}`). Partial updates (e.g., brightness-only) are handled — missing keys leave current values unchanged.
+- **JSON schema**: HA's JSON light schema. Command payloads carry `state` ("ON"/"OFF"), `brightness` (0–255), and `color` (`{"r":…,"g":…,"b":…}`). Partial updates (e.g., brightness-only) are handled — missing keys leave current values unchanged. State payloads must also include `"color_mode": "rgb"` — without it HA does not expose the color picker even if the discovery config declares RGB support. The discovery config uses `"supported_color_modes": ["rgb"]`; the old `"rgb": true` / `"brightness": true` fields are deprecated and ignored by current HA versions.
 - **Brightness**: applied by scaling RGB channels manually (`s.r * s.brightness / 255`) rather than `NeoPixel.setBrightness()`, which modifies the pixel buffer destructively.
 - **`mqtt.setBufferSize(1024)`**: required — the discovery payload exceeds PubSubClient's 256-byte default.
 - **Reconnect**: on every MQTT reconnect the sketch re-subscribes all command topics, re-publishes all discovery configs, and re-publishes all zone states so HA stays in sync.
@@ -96,5 +96,7 @@ Single-file sketch (`lightstrip.ino`). All user configuration lives in the block
 ## Home Assistant Setup
 
 1. Install the **Mosquitto broker** add-on in HA and enable the MQTT integration.
-2. Flash the device — HA will auto-discover one light entity per zone, all grouped under "D1 Mini LED Strip".
+2. Flash the device — HA will auto-discover one light entity per zone, all grouped under "HUZZAH32 LED Strip".
 3. Each entity has an on/off toggle, brightness slider, and RGB color picker.
+
+**Stale entities:** Discovery payloads are retained on the broker. If you rename a zone, change `unique_id`, or remove a zone, the old entity persists in HA. To clean up: use an MQTT client (e.g. MQTT Explorer) to publish an empty retained message to the old `homeassistant/light/<deviceId>_zone<i>/config` topic, then remove the entity from HA's MQTT integration page.
