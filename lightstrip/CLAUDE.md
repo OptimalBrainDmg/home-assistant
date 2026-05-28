@@ -59,7 +59,8 @@ Available data pins on HUZZAH32: 14, 15, 21, 22, 25, 26, 27, 32, 33. Avoid GPIO 
 - **Adafruit NeoPixel** by Adafruit
 - **ArduinoJson** by Benoit Blanchon (v6.x — `StaticJsonDocument` API)
 - **PubSubClient** by Nick O'Leary
-- **WiFi** (bundled with the ESP32 board package)
+- **Adafruit MCP9808** by Adafruit (required even if sensor is not installed)
+- **WiFi**, **Wire** (bundled with the ESP32 board package)
 
 Board package: `esp32` by Espressif — add `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json` to Board Manager URLs. Select board: **Adafruit ESP32 Feather**.
 
@@ -92,6 +93,7 @@ Single-file sketch (`lightstrip.ino`). All user configuration lives in the block
 - **Brightness**: applied by scaling RGB channels manually (`s.r * s.brightness / 255`) rather than `NeoPixel.setBrightness()`, which modifies the pixel buffer destructively.
 - **`mqtt.setBufferSize(1024)`**: required — the discovery payload exceeds PubSubClient's 256-byte default.
 - **Reconnect**: on every MQTT reconnect the sketch re-subscribes all command topics, re-publishes all discovery configs, and re-publishes all zone states so HA stays in sync.
+- **MCP9808 (optional)**: detected at runtime via `mcp9808.begin()` over I2C (HUZZAH32: SDA=23, SCL=22). If found, a temperature sensor entity is auto-discovered under the same HA device as the light zones and published every `TEMP_READ_INTERVAL` ms (default 30 s) to `home/<deviceId>/sensor/temperature`. The `Adafruit_MCP9808` library must be installed regardless of whether the sensor is physically present.
 
 ## Home Assistant Setup
 

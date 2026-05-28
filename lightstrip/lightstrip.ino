@@ -1,6 +1,8 @@
 #include <WiFi.h>
+#include <Wire.h>
 #include <PubSubClient.h>
 #include <Adafruit_NeoPixel.h>
+#include <Adafruit_MCP9808.h>
 #include <ArduinoJson.h>
 #include "secrets.h"
 
@@ -45,6 +47,11 @@ static const SegmentConfig SEGMENTS[] = {
 // 1.0 = no cap, 0.9 = 90% max output, etc.
 #define MAX_BRIGHTNESS_SCALE 1.0f
 
+// ── Optional MCP9808 temperature sensor ───────────────────────────────────────
+// Detected at runtime via I2C (HUZZAH32: SDA=23, SCL=22).
+// If not found on the bus, temperature reporting is silently skipped.
+#define TEMP_READ_INTERVAL 30000  // ms between temperature publishes
+
 // ══════════════════════════════════════════════════════════════════════════════
 // END OF CONFIGURATION
 // ══════════════════════════════════════════════════════════════════════════════
@@ -68,6 +75,13 @@ String discoveryTopics[NUM_ZONES];
 
 WiFiClient   wifiClient;
 PubSubClient mqtt(wifiClient);
+
+// ── MCP9808 (optional) ─────────────────────────────────────────────────────────
+Adafruit_MCP9808 mcp9808;
+bool             mcp9808Present = false;
+String           tempStateTopic;
+String           tempDiscoveryTopic;
+unsigned long    lastTempMs = 0;
 
 // ── Apply LED state for zone i ─────────────────────────────────────────────────
 void applyZone(int i) {
@@ -164,6 +178,25 @@ void publishDiscovery(int i) {
   mqtt.publish(discoveryTopics[i].c_str(), cfg.c_str(), /*retain=*/true);
 }
 
+// ── MQTT discovery for temperature sensor ─────────────────────────────────────
+void publishTempDiscovery() {
+  String dev = "{\"identifiers\":[\"" + deviceId + "\"],"
+               "\"name\":\"HUZZAH32 LED Strip\","
+               "\"model\":\"Adafruit HUZZAH32 ESP32 Feather\","
+               "\"manufacturer\":\"Adafruit\"}";
+
+  String cfg =
+    "{\"name\":\"Temperature\","
+    "\"device_class\":\"temperature\","
+    "\"state_topic\":\"" + tempStateTopic + "\","
+    "\"unit_of_measurement\":\"°C\","
+    "\"value_template\":\"{{ value_json.temperature }}\","
+    "\"unique_id\":\"" + deviceId + "_temp\","
+    "\"device\":" + dev + "}";
+
+  mqtt.publish(tempDiscoveryTopic.c_str(), cfg.c_str(), /*retain=*/true);
+}
+
 // ── WiFi ───────────────────────────────────────────────────────────────────────
 void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
@@ -189,6 +222,7 @@ void connectMQTT() {
         publishDiscovery(i);
         publishState(i);
       }
+      if (mcp9808Present) publishTempDiscovery();
     } else {
       Serial.println(" failed (rc=" + String(mqtt.state()) + "), retry in 5s");
       delay(5000);
@@ -207,6 +241,17 @@ void setup() {
     commandTopics[i]   = "home/" + deviceId + "/light/" + i + "/set";
     stateTopics[i]     = "home/" + deviceId + "/light/" + i + "/state";
     discoveryTopics[i] = "homeassistant/light/" + deviceId + "_zone" + i + "/config";
+  }
+
+  Wire.begin();  // HUZZAH32: SDA=23, SCL=22
+  mcp9808Present = mcp9808.begin();
+  if (mcp9808Present) {
+    mcp9808.setResolution(3);  // 0.0625°C resolution
+    tempStateTopic     = "home/" + deviceId + "/sensor/temperature";
+    tempDiscoveryTopic = "homeassistant/sensor/" + deviceId + "_temp/config";
+    Serial.println("MCP9808 found");
+  } else {
+    Serial.println("MCP9808 not found — temperature skipped");
   }
 
 #if defined(MODE_MULTI_STRIP)
@@ -235,4 +280,15 @@ void loop() {
   connectWiFi();
   if (!mqtt.connected()) connectMQTT();
   mqtt.loop();
+
+  if (mcp9808Present) {
+    unsigned long now = millis();
+    if (now - lastTempMs >= TEMP_READ_INTERVAL) {
+      lastTempMs = now;
+      float temp = mcp9808.readTempC();
+      Serial.println("Temp: " + String(temp, 1) + " C");
+      mqtt.publish(tempStateTopic.c_str(),
+                   ("{\"temperature\":" + String(temp, 1) + "}").c_str());
+    }
+  }
 }
