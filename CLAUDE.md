@@ -8,8 +8,9 @@ Collection of Arduino sketches for ESP8266/ESP32-based sensors and actuators tha
 
 Current sketches:
 - `temp_humidity_sensor/` — LOLIN D1 Mini V4 reading AM2320 or SHTC3 over I2C, publishing to HA via MQTT auto-discovery
+- `temp_humidity_sensor_battery/` — Seeed XIAO ESP32C6 reading SHTC3 over I2C, battery-powered with deep sleep between readings
 - `lightstrip/` — Adafruit HUZZAH32 ESP32 Feather driving a WS2812B LED strip, exposed to HA as an MQTT light (on/off, brightness, RGB color)
-- `fallout-terminal-pyportal/` — Adafruit PyPortal (SAMD51 + ESP32 WiFi co-proc) rendering a Fallout-terminal-style dashboard; publishes sensor readings and shows touch-toggleable light zone buttons; config lives on an SD card instead of `secrets.h`
+- `fallout-terminal-pyportal/` — Adafruit PyPortal (SAMD51 + ESP32 WiFi co-proc) rendering a Fallout-terminal-style dashboard; publishes sensor readings and shows touch-controlled light zone buttons (toggle + brightness in 5% steps); config lives on an SD card instead of `secrets.h`
 
 ## Conventions Across All Sketches
 

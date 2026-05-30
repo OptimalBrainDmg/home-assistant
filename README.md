@@ -7,6 +7,7 @@ Arduino firmware for DIY devices that integrate with Home Assistant via MQTT aut
 | Sketch | Hardware | HA Entities |
 |--------|----------|-------------|
 | [`temp_humidity_sensor`](temp_humidity_sensor/) | LOLIN D1 Mini V4 + AM2320 or SHTC3 I2C sensor | Temperature (°C), Humidity (%) |
+| [`temp_humidity_sensor_battery`](temp_humidity_sensor_battery/) | Seeed XIAO ESP32C6 + SHTC3 I2C sensor (battery-powered, deep sleep) | Temperature (°C), Humidity (%) |
 | [`lightstrip`](lightstrip/) | Adafruit HUZZAH32 ESP32 Feather + WS2812B LED strip | Light (on/off, brightness, RGB color) per zone |
 | [`fallout-terminal-pyportal`](fallout-terminal-pyportal/) | Adafruit PyPortal + ADT7410 + ambient light sensor | Temperature (°C), Light (ADC); touch UI for light zones |
 

@@ -38,8 +38,13 @@
 // Audio: DAC output on A0, amplifier enable on pin 50 (PA27).
 #define SPEAKER_SHUTDOWN 50
 #define AUDIO_OUT        A0
-#define SOUND_POWERON  "robco/sounds/poweron.wav"
-#define SOUND_POWEROFF "robco/sounds/poweroff.wav"
+#define SOUND_POWERON   "robco/sounds/poweron.wav"
+#define SOUND_POWEROFF  "robco/sounds/poweroff.wav"
+#define SOUND_BRI_DOWN  "robco/sounds/single4.wav"
+#define SOUND_BRI_UP    "robco/sounds/single6.wav"
+#define SOUND_ENTER     "robco/sounds/enter3.wav"
+#define SOUND_EXIT      "robco/sounds/single1.wav"
+#define SOUND_LIMIT     "robco/sounds/enter1.wav"
 
 // ── DISPLAY ───────────────────────────────────────────────────────────────────
 #define COLOR_BG     0x0000   // black
@@ -57,16 +62,17 @@
 // Calibration for touchpaint_pyportal defaults. Adjust if touch feels off.
 #define TOUCH_X_MIN   130
 #define TOUCH_X_MAX   900
-#define TOUCH_Y_MIN   840
-#define TOUCH_Y_MAX   240
+#define TOUCH_Y_MIN   111
+#define TOUCH_Y_MAX   907
 #define TOUCH_P_MIN   400
 #define TOUCH_P_MAX  1200
 #define TOUCH_DEBOUNCE_MS 400UL
 
 // ── TIMING ────────────────────────────────────────────────────────────────────
-#define SENSOR_MS   30000UL   // publish temp + light every 30 s
-#define CLOCK_MS    60000UL   // redraw clock every 1 min (no seconds shown)
-#define RECONN_MS    5000UL   // retry MQTT every 5 s
+#define SENSOR_MS       30000UL   // publish temp + light every 30 s
+#define CLOCK_MS        60000UL   // redraw clock every 1 min (no seconds shown)
+#define RECONN_MS        5000UL   // retry MQTT every 5 s
+#define LIGHTING_TIMEOUT 60000UL  // return to main screen after 1 min idle
 
 // ── CREDENTIALS (loaded from /config.json on SD card) ────────────────────────
 static char cfgWifiSsid[64];
@@ -86,6 +92,7 @@ struct ZoneConfig {
   char stateTopic[TOPIC_LEN];
   char commandTopic[TOPIC_LEN];
   bool isOn;
+  int  brightness;  // 0–100 %
 };
 
 static int        numZones      = 0;
@@ -216,16 +223,20 @@ static void renderZoneButton(int i) {
   int y = Y_ZONES + i * LINE_H;
   zoneBtnTop[i] = y - 12;
 
-  // Format: "[NAME................. ON ]" padded to fixed width
-  char line[44];
-  char padded[22];
+  // Format: "[NAME..............  75%]" / "[NAME.............. OFF]"
+  char line[28];
+  char padded[17];
+  char stateStr[5];
   int nlen = strlen(zones[i].name);
-  if (nlen > 18) nlen = 18;
+  if (nlen > 16) nlen = 16;
   memcpy(padded, zones[i].name, nlen);
-  for (int j = nlen; j < 20; j++) padded[j] = '.';
-  padded[20] = '\0';
-  const char* st = zones[i].isOn ? "ON " : "OFF";
-  snprintf(line, sizeof(line), "[%s %s]", padded, st);
+  for (int j = nlen; j < 16; j++) padded[j] = '.';
+  padded[16] = '\0';
+  if (zones[i].isOn)
+    snprintf(stateStr, sizeof(stateStr), "%3d%%", zones[i].brightness);
+  else
+    strlcpy(stateStr, " OFF", sizeof(stateStr));
+  snprintf(line, sizeof(line), "[%s %s]", padded, stateStr);
 
   tft.fillRect(0, y - 12, SCR_W, LINE_H, COLOR_BG);
   tft.setFont(&FreeMono9pt7b);
@@ -265,37 +276,56 @@ static void renderFullScreen() {
   tft.setCursor(4, Y_OUTSIDE);
   tft.print(F(">OUT: --  HUM: --"));
   tft.setCursor(4, Y_WEATHER);
-  tft.print(F(">WX: --"));
+  tft.print(F(">WX:  --"));
 
   for (int i = 0; i < numZones; i++) renderZoneButton(i);
 }
 
 // ── LIGHTING CONTROL SCREEN ───────────────────────────────────────────────────
 
-#define LIGHTING_HDR_H 37   // pixels reserved for header; tap here to go back
+#define LIGHTING_HDR_H  37   // pixels reserved for header; tap here to go back
+#define LBTN_LABEL_END 220   // x of divider between label and [-] section
+#define LBTN_MINUS_END 265   // x of divider between [-] and [+] section
 
 static void renderLightingButton(int i) {
   if (lightingBtnH == 0) return;
-  int y = LIGHTING_HDR_H + i * lightingBtnH;
+  int y  = LIGHTING_HDR_H + i * lightingBtnH;
+  int bh = lightingBtnH;
   uint16_t fg = zones[i].isOn ? COLOR_GREEN : COLOR_DIM;
   uint16_t bg = zones[i].isOn ? COLOR_BTN_ON : COLOR_BG;
 
-  tft.fillRect(4, y + 3, SCR_W - 8, lightingBtnH - 6, bg);
-  tft.drawRect(4, y + 3, SCR_W - 8, lightingBtnH - 6, fg);
+  // Clear full button row, then fill label section with zone colour
+  tft.fillRect(4, y + 3, SCR_W - 8, bh - 6, COLOR_BG);
+  tft.fillRect(4, y + 3, LBTN_LABEL_END - 4, bh - 6, bg);
 
-  char line[44];
-  char padded[22];
-  int nlen = strlen(zones[i].name);
-  if (nlen > 18) nlen = 18;
-  memcpy(padded, zones[i].name, nlen);
-  for (int j = nlen; j < 20; j++) padded[j] = '.';
-  padded[20] = '\0';
-  snprintf(line, sizeof(line), "[%s %s]", padded, zones[i].isOn ? "ON " : "OFF");
+  // Outer border + two vertical dividers
+  tft.drawRect(4, y + 3, SCR_W - 8, bh - 6, fg);
+  tft.drawFastVLine(LBTN_LABEL_END, y + 4, bh - 8, fg);
+  tft.drawFastVLine(LBTN_MINUS_END, y + 4, bh - 8, fg);
+
+  // Two-line label: zone name on first line, state (% or OFF) on second
+  char stateStr[5];
+  if (zones[i].isOn)
+    snprintf(stateStr, sizeof(stateStr), "%3d%%", zones[i].brightness);
+  else
+    strlcpy(stateStr, " OFF", sizeof(stateStr));
+
+  int textY1 = y + bh / 3 + 4;
+  int textY2 = y + 2 * bh / 3 + 4;
 
   tft.setFont(&FreeMonoBold9pt7b);
   tft.setTextColor(fg);
-  tft.setCursor(8, y + lightingBtnH / 2 + 6);
-  tft.print(line);
+  tft.setCursor(8, textY1);
+  tft.print(zones[i].name);
+  tft.setCursor(8, textY2);
+  tft.print(stateStr);
+
+  // [-] and [+] centred vertically in the button
+  int textYC = y + bh / 2 + 6;
+  tft.setCursor(LBTN_LABEL_END + 6,  textYC);
+  tft.print("[-]");
+  tft.setCursor(LBTN_MINUS_END + 9, textYC);
+  tft.print("[+]");
 }
 
 static void renderLightingScreen() {
@@ -369,7 +399,7 @@ static void updateOutsideDisplay() {
   char buf[40];
   snprintf(buf, sizeof(buf), ">OUT: %s  HUM: %s", outsideTempStr, humidityStr);
   printLine(Y_OUTSIDE, buf, COLOR_GREEN);
-  snprintf(buf, sizeof(buf), ">WX: %s", weatherStr);
+  snprintf(buf, sizeof(buf), ">WX:  %s", weatherStr);
   printLine(Y_WEATHER, buf, COLOR_GREEN);
 }
 
@@ -413,6 +443,7 @@ static bool loadConfig() {
     strlcpy(zones[numZones].stateTopic,   z["state_topic"]   | "",     TOPIC_LEN);
     strlcpy(zones[numZones].commandTopic, z["command_topic"] | "",     TOPIC_LEN);
     zones[numZones].isOn = false;
+    zones[numZones].brightness = 100;
     numZones++;
   }
   return true;
@@ -512,8 +543,17 @@ static void mqttCallback(char* topic, byte* payload, unsigned int len) {
     if (deserializeJson(doc, payload, len) != DeserializationError::Ok) break;
     const char* state = doc["state"] | "";
     bool nowOn = (strcmp(state, "ON") == 0);
-    if (nowOn != zones[i].isOn) {
+    int rawBri = doc["brightness"] | -1;
+    int newBri = zones[i].brightness;
+    if (rawBri >= 0) {
+      newBri = rawBri * 100 / 255;
+      newBri = ((newBri + 2) / 5) * 5;  // snap to nearest 5%
+      if (newBri < 5)   newBri = 5;
+      if (newBri > 100) newBri = 100;
+    }
+    if (nowOn != zones[i].isOn || newBri != zones[i].brightness) {
       zones[i].isOn = nowOn;
+      zones[i].brightness = newBri;
       updateZoneDisplay(i);
     }
     break;
@@ -531,12 +571,52 @@ static void playSound(const char* path) {
   File f = SD.open(path);
   if (!f) return;
 
-  uint8_t hdr[44];
-  if (f.read(hdr, 44) < 44) { f.close(); return; }
+  // Parse RIFF/WAVE header: read fixed 12-byte RIFF chunk, then scan sub-chunks
+  // for "fmt " (to get sample rate) and "data" (to find where PCM starts).
+  // This handles macOS-optimized WAVs where data can start well past byte 44.
+  uint8_t riff[12];
+  if (f.read(riff, 12) < 12 ||
+      riff[0] != 'R' || riff[1] != 'I' || riff[2] != 'F' || riff[3] != 'F' ||
+      riff[8] != 'W' || riff[9] != 'A' || riff[10] != 'V' || riff[11] != 'E') {
+    f.close(); return;
+  }
 
-  uint32_t sampleRate = hdr[24] | ((uint32_t)hdr[25] << 8)
-                      | ((uint32_t)hdr[26] << 16) | ((uint32_t)hdr[27] << 24);
-  if (sampleRate == 0) { f.close(); return; }
+  uint32_t sampleRate = 0;
+  bool foundData = false;
+
+  // Skip n bytes by reading; f.seek() silently fails for large forward jumps
+  // on the Arduino SD library, so read-and-discard is more reliable.
+  auto skipBytes = [&f](uint32_t n) -> bool {
+    uint8_t tmp[64];
+    while (n > 0) {
+      uint32_t r = n < sizeof(tmp) ? n : sizeof(tmp);
+      if ((uint32_t)f.read(tmp, r) < r) return false;
+      n -= r;
+    }
+    return true;
+  };
+
+  while (f.available() >= 8) {
+    uint8_t chunkHdr[8];
+    if (f.read(chunkHdr, 8) < 8) break;
+    uint32_t chunkSize = chunkHdr[4] | ((uint32_t)chunkHdr[5] << 8)
+                       | ((uint32_t)chunkHdr[6] << 16) | ((uint32_t)chunkHdr[7] << 24);
+    if (chunkHdr[0]=='f' && chunkHdr[1]=='m' && chunkHdr[2]=='t' && chunkHdr[3]==' ') {
+      uint8_t fmt[16];
+      uint32_t toRead = chunkSize < 16 ? chunkSize : 16;
+      if (f.read(fmt, toRead) < (int)toRead) break;
+      sampleRate = fmt[4] | ((uint32_t)fmt[5] << 8)
+                 | ((uint32_t)fmt[6] << 16) | ((uint32_t)fmt[7] << 24);
+      if (chunkSize > toRead && !skipBytes(chunkSize - toRead)) break;
+    } else if (chunkHdr[0]=='d' && chunkHdr[1]=='a' && chunkHdr[2]=='t' && chunkHdr[3]=='a') {
+      foundData = true;
+      break;  // file position is now at first PCM sample
+    } else {
+      if (!skipBytes(chunkSize)) break;
+    }
+  }
+
+  if (!foundData || sampleRate == 0) { f.close(); return; }
   uint32_t periodUs = 1000000UL / sampleRate;
 
   analogWrite(AUDIO_OUT, 2048);           // ensure DAC is centred before amp on
@@ -600,6 +680,7 @@ static void handleTouch() {
     Serial.println("main -> lighting screen");
     currentScreen = SCREEN_LIGHTING;
     renderLightingScreen();
+    playSound(SOUND_ENTER);
     return;
   }
 
@@ -611,6 +692,7 @@ static void handleTouch() {
     updateOutsideDisplay();
     updateDateTime();
     updateSensors();
+    playSound(SOUND_EXIT);
     return;
   }
 
@@ -620,15 +702,40 @@ static void handleTouch() {
     Serial.print(" top="); Serial.print(btnY);
     Serial.print(" bottom="); Serial.println(btnY + lightingBtnH);
     if (sy >= btnY && sy < btnY + lightingBtnH) {
-      bool turningOn = !zones[i].isOn;
-      Serial.print("zone "); Serial.print(i); Serial.print(" -> ");
-      Serial.println(turningOn ? "ON" : "OFF");
-      char buf[32];
-      snprintf(buf, sizeof(buf), "{\"state\":\"%s\"}", turningOn ? "ON" : "OFF");
-      mqtt.publish(zones[i].commandTopic, buf);
-      zones[i].isOn = turningOn;
-      renderLightingButton(i);
-      playSound(turningOn ? SOUND_POWERON : SOUND_POWEROFF);
+      char buf[48];
+      if (sx < LBTN_LABEL_END) {
+        // Toggle ON / OFF
+        bool turningOn = !zones[i].isOn;
+        Serial.print("zone "); Serial.print(i); Serial.print(" -> ");
+        Serial.println(turningOn ? "ON" : "OFF");
+        if (turningOn) {
+          snprintf(buf, sizeof(buf), "{\"state\":\"ON\",\"brightness\":%d}",
+                   zones[i].brightness * 255 / 100);
+        } else {
+          snprintf(buf, sizeof(buf), "{\"state\":\"OFF\"}");
+        }
+        mqtt.publish(zones[i].commandTopic, buf);
+        zones[i].isOn = turningOn;
+        renderLightingButton(i);
+        playSound(turningOn ? SOUND_POWERON : SOUND_POWEROFF);
+      } else {
+        // Brightness -5% or +5%; minimum 5% (use toggle to turn off)
+        int delta  = (sx < LBTN_MINUS_END) ? -5 : 5;
+        int newBri = constrain(zones[i].brightness + delta, 5, 100);
+        Serial.print("zone "); Serial.print(i); Serial.print(" brightness -> ");
+        Serial.println(newBri);
+        if (zones[i].isOn && newBri == zones[i].brightness) {
+          playSound(SOUND_LIMIT);
+        } else {
+          zones[i].brightness = newBri;
+          zones[i].isOn = true;
+          snprintf(buf, sizeof(buf), "{\"state\":\"ON\",\"brightness\":%d}",
+                   newBri * 255 / 100);
+          mqtt.publish(zones[i].commandTopic, buf);
+          renderLightingButton(i);
+          playSound(delta < 0 ? SOUND_BRI_DOWN : SOUND_BRI_UP);
+        }
+      }
       break;
     }
   }
@@ -723,4 +830,16 @@ void loop() {
   }
 
   handleTouch();
+
+  // Return to main screen after 1 minute of inactivity on the lighting screen
+  if (currentScreen == SCREEN_LIGHTING &&
+      millis() - lastTouchMs >= LIGHTING_TIMEOUT) {
+    Serial.println("lighting timeout -> main screen");
+    currentScreen = SCREEN_MAIN;
+    renderFullScreen();
+    updateOutsideDisplay();
+    updateDateTime();
+    updateSensors();
+    playSound(SOUND_EXIT);
+  }
 }
