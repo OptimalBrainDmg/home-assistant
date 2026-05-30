@@ -1,0 +1,24 @@
+{
+  "wifi_ssid": "YOUR_WIFI_SSID",
+  "wifi_pass": "YOUR_WIFI_PASSWORD",
+  "mqtt_host": "homeassistant.local",
+  "mqtt_port": 1883,
+  "mqtt_user": "YOUR_MQTT_USERNAME",
+  "mqtt_pass": "YOUR_MQTT_PASSWORD",
+  "tz_offset": -5,
+  "outside_temp_topic": "home/weather/temperature",
+  "weather_topic": "home/weather/state",
+  "humidity_topic": "home/weather/humidity",
+  "zones": [
+    {
+      "name": "BOTTOM LIGHT",
+      "state_topic": "home/huzzah32_XXXXXXXX/light/0/state",
+      "command_topic": "home/huzzah32_XXXXXXXX/light/0/set"
+    },
+    {
+      "name": "MIDDLE LIGHT",
+      "state_topic": "home/huzzah32_XXXXXXXX/light/1/state",
+      "command_topic": "home/huzzah32_XXXXXXXX/light/1/set"
+    }
+  ]
+}

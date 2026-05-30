@@ -1,4 +1,7 @@
 secrets.h
+fallout-terminal-pyportal/sdcard/config.json
+fallout-terminal-pyportal/sdcard/config.jsn
+fallout-terminal-pyportal/sdcard/robco
 
 # macOS
 .DS_Store
@@ -12,3 +15,4 @@ secrets.h
 .Trashes
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
+.*~

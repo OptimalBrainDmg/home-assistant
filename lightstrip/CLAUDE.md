@@ -49,10 +49,11 @@ Available data pins on HUZZAH32: 14, 15, 21, 22, 25, 26, 27, 32, 33. Avoid GPIO 
 
 ## Configuration Before Flashing
 
-1. Copy `secrets.h.example` → `secrets.h` and fill in WiFi and MQTT credentials.
+1. Copy `secrets.h.example` → `secrets.h` and fill in credentials. Fields: `WIFI_SSID`, `WIFI_PASSWORD`, `MQTT_HOST` (default `homeassistant.local`), `MQTT_PORT` (default `1883`), `MQTT_USER`, `MQTT_PASS`.
 2. In `lightstrip.ino`, uncomment exactly one mode (`MODE_MULTI_STRIP` or `MODE_SEGMENTS`).
 3. Edit the `STRIPS[]` or `SEGMENTS[]` array to match your hardware (names, pins, counts).
 4. For `MODE_SEGMENTS`, set `SEG_PIN` and `SEG_NUM_LEDS` to match the physical strip.
+5. Optionally lower `MAX_BRIGHTNESS_SCALE` (default `1.0f`) to cap peak current — e.g. `0.5f` limits output to 50% max brightness across all zones.
 
 ## Required Libraries (install via Arduino Library Manager)
 
@@ -81,19 +82,24 @@ arduino-cli monitor --port /dev/cu.usbserial-* --config baudrate=115200
 
 Single-file sketch (`lightstrip.ino`). All user configuration lives in the block at the top of the file between the `CONFIGURATION` banners.
 
+- **`deviceId`**: `"huzzah32_" + hex(ESP.getEfuseMac() >> 24)` — e.g. `huzzah32_a3f2c1b0`. Appears in all MQTT topic paths and HA `unique_id` fields; used to distinguish multiple devices on the same broker.
 - **Zones**: both modes share the same runtime concept of a "zone" — an independently controllable light with its own `ZoneState` (on/off, brightness, R, G, B) and its own MQTT topics.
 - **`NUM_ZONES`**: derived at compile time from the length of `STRIPS[]` or `SEGMENTS[]` via `sizeof`. Used to size all global arrays.
-- **`ZoneState zoneState[NUM_ZONES]`**: per-zone runtime state. All zones start off at full brightness (255) white (255, 255, 255).
-- **`applyZone(i)`**: writes the zone's current state to the NeoPixel hardware. In `MODE_MULTI_STRIP` each zone has its own `Adafruit_NeoPixel*` (heap-allocated in setup); in `MODE_SEGMENTS` all zones share one instance, and only the relevant LED range is updated before calling `show()`.
+- **`ZoneState zoneState[NUM_ZONES]`**: per-zone runtime state. Zones initialize `on=false`, brightness=255, color white (255, 255, 255) — off but ready to turn on at full white.
+- **`applyZone(i)`**: writes the zone's current state to the NeoPixel hardware. In `MODE_MULTI_STRIP` each zone has its own `Adafruit_NeoPixel*` (heap-allocated in setup); in `MODE_SEGMENTS` all zones share one instance, and `pixelStrip.show()` re-transmits the full physical strip buffer — updating one segment momentarily redraws all others too (harmless but relevant if adding timed effects).
 - **MQTT topics** (all per-zone, `i` = 0-based zone index):
   - Subscribe: `home/<deviceId>/light/<i>/set` — receives JSON commands from HA
   - Publish (retained): `home/<deviceId>/light/<i>/state` — current zone state
   - Publish (retained): `homeassistant/light/<deviceId>_zone<i>/config` — HA auto-discovery
 - **JSON schema**: HA's JSON light schema. Command payloads carry `state` ("ON"/"OFF"), `brightness` (0–255), and `color` (`{"r":…,"g":…,"b":…}`). Partial updates (e.g., brightness-only) are handled — missing keys leave current values unchanged. State payloads must also include `"color_mode": "rgb"` — without it HA does not expose the color picker even if the discovery config declares RGB support. The discovery config uses `"supported_color_modes": ["rgb"]`; the old `"rgb": true` / `"brightness": true` fields are deprecated and ignored by current HA versions.
-- **Brightness**: applied by scaling RGB channels manually (`s.r * s.brightness / 255`) rather than `NeoPixel.setBrightness()`, which modifies the pixel buffer destructively.
+- **Brightness**: applied by first clamping `s.brightness` via `MAX_BRIGHTNESS_SCALE` to get `bri`, then scaling each channel as `s.r * bri / 255`. Uses manual channel math rather than `NeoPixel.setBrightness()`, which modifies the pixel buffer destructively.
 - **`mqtt.setBufferSize(1024)`**: required — the discovery payload exceeds PubSubClient's 256-byte default.
-- **Reconnect**: on every MQTT reconnect the sketch re-subscribes all command topics, re-publishes all discovery configs, and re-publishes all zone states so HA stays in sync.
-- **MCP9808 (optional)**: detected at runtime via `mcp9808.begin()` over I2C (HUZZAH32: SDA=23, SCL=22). If found, a temperature sensor entity is auto-discovered under the same HA device as the light zones and published every `TEMP_READ_INTERVAL` ms (default 30 s) to `home/<deviceId>/sensor/temperature`. The `Adafruit_MCP9808` library must be installed regardless of whether the sensor is physically present.
+- **Reconnect**: both `connectWiFi()` and `connectMQTT()` are blocking — the device is unresponsive to incoming MQTT commands during reconnection. `connectMQTT()` retries every 5 s. On every reconnect the sketch re-subscribes all command topics, re-publishes all discovery configs, and re-publishes all zone states so HA stays in sync.
+- **MCP9808 (optional)**: detected at runtime via `mcp9808.begin()` over I2C (HUZZAH32: SDA=23, SCL=22). If found, a temperature sensor entity is auto-discovered under the same HA device as the light zones and published every `TEMP_READ_INTERVAL` ms (default 30 s) to `home/<deviceId>/sensor/temperature`. Temperature publishes are **not retained** (unlike zone state/discovery), so HA will show "unavailable" after a reboot until the first publish fires. The `Adafruit_MCP9808` library must be installed regardless of whether the sensor is physically present.
+
+## Enclosure
+
+`enclosure/lightstrip.scad` is a parametric OpenSCAD model for a 3D-printable enclosure. Open with OpenSCAD to adjust dimensions and export STL for printing.
 
 ## Home Assistant Setup
 
