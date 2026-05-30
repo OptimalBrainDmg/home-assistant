@@ -6,18 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Collection of Arduino sketches for ESP8266/ESP32-based sensors and actuators that integrate with Home Assistant via MQTT. Each sketch lives in its own subdirectory and has its own `CLAUDE.md` with hardware pinout, required libraries, build/flash commands, and architecture notes.
 
-Current sketches:
-- `temp_humidity_sensor/` — LOLIN D1 Mini V4 reading AM2320 or SHTC3 over I2C, publishing to HA via MQTT auto-discovery
-- `temp_humidity_sensor_battery/` — Seeed XIAO ESP32C6 reading SHTC3 over I2C, battery-powered with deep sleep between readings
-- `lightstrip/` — Adafruit HUZZAH32 ESP32 Feather driving a WS2812B LED strip, exposed to HA as an MQTT light (on/off, brightness, RGB color)
-- `fallout-terminal-pyportal/` — Adafruit PyPortal (SAMD51 + ESP32 WiFi co-proc) rendering a Fallout-terminal-style dashboard; publishes sensor readings and shows touch-controlled light zone buttons (toggle + brightness in 5% steps); config lives on an SD card instead of `secrets.h`
-
-## Conventions Across All Sketches
-
-- Credentials go in `secrets.h` (ESP8266/ESP32 sketches) or `sdcard/config.jsn` (PyPortal); both are gitignored. Example files with placeholder values are committed instead.
-- Device identity is derived from chip ID (`ESP.getChipId()` on ESP8266, `ESP.getEfuseMac()` on ESP32, WiFi MAC on PyPortal) so multiple devices don't collide on the broker.
-- MQTT auto-discovery publishes retained config payloads to `homeassistant/<domain>/<deviceId>/…/config`. If you rename a zone or remove a device, clean up stale HA entities by publishing an empty retained message to the old discovery topic, then removing the entity from HA's MQTT integration page.
-- `mqtt.setBufferSize()` must be called in `setup()` — discovery payloads exceed PubSubClient's 256-byte default. Current values: 512 B (temp sensor, PyPortal) and 1024 B (lightstrip).
+| Sketch | Hardware | HA Entities | FQBN |
+|--------|----------|-------------|------|
+| `temp_humidity_sensor/` | LOLIN D1 Mini V4 (ESP8266) | Temperature, Humidity | `esp8266:esp8266:d1_mini` |
+| `temp_humidity_sensor_battery/` | Seeed XIAO ESP32C6 (deep sleep) | Temperature, Humidity | `esp32:esp32:XIAO_ESP32C6` |
+| `lightstrip/` | Adafruit HUZZAH32 ESP32 Feather | Light zones (on/off, brightness, RGB) | `esp32:esp32:featheresp32` |
+| `fallout-terminal-pyportal/` | Adafruit PyPortal (SAMD51 + ESP32 WiFi) | Temperature, Light; touch UI for light zones | `adafruit:samd:adafruit_pyportal_m4` |
 
 ## Toolchain
 
@@ -27,4 +21,24 @@ All sketches use `arduino-cli`. Find the connected board's port before uploading
 arduino-cli board list
 ```
 
-See individual sketch CLAUDE.md files for exact compile/upload/monitor commands, required library lists, and board package URLs.
+General pattern for any sketch (substitute the correct FQBN and port from the table above):
+
+```bash
+arduino-cli compile --fqbn <fqbn> <sketch-dir>
+arduino-cli upload  --fqbn <fqbn> --port <port> <sketch-dir>
+arduino-cli monitor --port <port> --config baudrate=115200
+```
+
+Board package URLs to add to Board Manager:
+- ESP8266: `http://arduino.esp8266.com/stable/package_esp8266com_index.json`
+- ESP32 (Espressif): `https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json` (requires core 3.0.0+ for ESP32-C6)
+- Adafruit SAMD: `https://adafruit.github.io/arduino-board-index/package_adafruit_index.json`
+
+## Conventions Across All Sketches
+
+- Credentials go in `secrets.h` (ESP8266/ESP32 sketches) or `sdcard/config.jsn` (PyPortal); both are gitignored. Example files with placeholder values are committed instead.
+- Device identity is derived from chip ID — `ESP.getChipId()` on ESP8266, lower 3 bytes of `ESP.getEfuseMac()` on ESP32, WiFi MAC on PyPortal — so multiple devices don't collide on the broker.
+- MQTT auto-discovery publishes **retained** config payloads to `homeassistant/<domain>/<deviceId>/…/config`. If you rename a zone or remove a device, clean up stale HA entities by publishing an empty retained message to the old discovery topic (e.g. via MQTT Explorer), then removing the entity from HA's MQTT integration page.
+- `mqtt.setBufferSize()` must be called in `setup()` — discovery payloads exceed PubSubClient's 256-byte default. Values: 512 B (temp sensors, PyPortal) and 1024 B (lightstrip).
+- **ArduinoJson v6.x** (`StaticJsonDocument` API) is used by the lightstrip and PyPortal sketches. Do not use the v7 API (`JsonDocument`) — it is not compatible.
+- **HA JSON light schema**: state payloads must include `"color_mode": "rgb"` — without it HA does not show the color picker even if the discovery config declares RGB support. The deprecated `"rgb": true` / `"brightness": true` fields are ignored by current HA versions.
