@@ -56,7 +56,7 @@
 // ── TOUCH ─────────────────────────────────────────────────────────────────────
 // Calibration for touchpaint_pyportal defaults. Adjust if touch feels off.
 #define TOUCH_X_MIN   130
-#define TOUCH_X_MAX   750
+#define TOUCH_X_MAX   900
 #define TOUCH_Y_MIN   840
 #define TOUCH_Y_MAX   240
 #define TOUCH_P_MIN   400
@@ -377,7 +377,7 @@ static void updateOutsideDisplay() {
 
 static bool loadConfig() {
   if (!SD.begin(SD_CS)) {
-    renderBootMsg("SD INIT FAILED - CHECK CARD");
+    renderBootMsg("SD INIT FAILED- CHECK CARD");
     return false;
   }
   File f = SD.open("config.jsn");
@@ -571,10 +571,10 @@ static void playSound(const char* path) {
 // Maps raw touch coordinates to screen pixels for ROTATION 1 (landscape, USB top).
 // If touch is inverted or swapped, adjust the map() arguments here.
 static int touchToScrX(const TSPoint& p) {
-  return map(p.y, TOUCH_Y_MIN, TOUCH_Y_MAX, SCR_W - 1, 0);
+  return constrain(map(p.y, TOUCH_Y_MIN, TOUCH_Y_MAX, SCR_W - 1, 0), 0, SCR_W - 1);
 }
 static int touchToScrY(const TSPoint& p) {
-  return map(p.x, TOUCH_X_MIN, TOUCH_X_MAX, SCR_H - 1, 0);
+  return constrain(map(p.x, TOUCH_X_MIN, TOUCH_X_MAX, SCR_H - 1, 0), 0, SCR_H - 1);
 }
 
 static void handleTouch() {
@@ -661,7 +661,8 @@ void setup() {
 
   renderBootMsg("LOADING SD CONFIG...");
   if (!loadConfig()) {
-    numZones = 0;
+    renderBootMsg("* FIX SD CARD AND RESET *");
+    while (true) {}
   }
   playSound(SOUND_POWERON);
 
