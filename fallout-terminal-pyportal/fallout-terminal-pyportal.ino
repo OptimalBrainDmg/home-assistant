@@ -114,7 +114,8 @@ static char       cfgHumidityTopic[TOPIC_LEN];
 #define Y_SEP3   125
 #define Y_CTLBL  139
 #define Y_ZONES  156   // first zone button; subsequent buttons at +LINE_H each
-#define Y_STAT  231   // status / instruction line
+#define Y_SEP4   218   // separator above safe control section
+#define Y_STAT   231   // safe control line
 
 static int zoneBtnTop[MAX_ZONES];  // top-y of each touch target
 
@@ -279,6 +280,15 @@ static void renderFullScreen() {
   tft.print(F(">WX:  --"));
 
   for (int i = 0; i < numZones; i++) renderZoneButton(i);
+
+  drawSep(Y_SEP4);
+  tft.fillRect(0, Y_STAT - 12, SCR_W, LINE_H, COLOR_BG);
+  tft.setFont(&FreeMono9pt7b);
+  tft.setTextColor(COLOR_DIM);
+  tft.setCursor(4, Y_STAT);
+  tft.print(F(">SAFE CONTROL"));
+  tft.setCursor(228, Y_STAT);
+  tft.print(F("[LOCKED]"));
 }
 
 // ── LIGHTING CONTROL SCREEN ───────────────────────────────────────────────────
