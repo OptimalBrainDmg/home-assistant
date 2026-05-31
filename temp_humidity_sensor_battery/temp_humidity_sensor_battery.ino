@@ -2,7 +2,6 @@
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <Adafruit_SHTC3.h>
-#include "esp_sleep.h"
 #include "secrets.h"
 
 // ── Configuration ──────────────────────────────────────────────────────────────
@@ -22,9 +21,11 @@ PubSubClient mqtt(wifiClient);
 
 // ── Sleep ──────────────────────────────────────────────────────────────────────
 void goToSleep() {
-  mqtt.disconnect();
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
+  if (mqtt.connected()) mqtt.disconnect();
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+  }
   esp_sleep_enable_timer_wakeup((uint64_t)SLEEP_DURATION_SEC * 1000000ULL);
   esp_deep_sleep_start();
 }
@@ -118,6 +119,8 @@ void setup() {
   discoveryTopicTemp  = "homeassistant/sensor/" + deviceId + "/temperature/config";
   discoveryTopicHumid = "homeassistant/sensor/" + deviceId + "/humidity/config";
 
+  Serial.print("Device ID: "); Serial.println(deviceId);
+
   if (!connectWiFi()) {
     Serial.println("WiFi timed out — sleeping.");
     goToSleep();
@@ -136,6 +139,7 @@ void setup() {
                    ",\"humidity\":"    + String(humid, 1) + "}";
   Serial.println("Publishing: " + payload);
   mqtt.publish(stateTopic.c_str(), payload.c_str());
+  for (int i = 0; i < 5; i++) { mqtt.loop(); delay(10); }
 
   goToSleep();
 }
