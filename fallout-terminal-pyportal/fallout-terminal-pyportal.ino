@@ -844,8 +844,9 @@ void loop() {
   }
   mqtt.loop();
 
-  // Clock
-  ntp.update();
+  // Clock — skip NTP when WiFi is down; UDP SPI calls can hang if NINA is
+  // not connected, and NTPClient's internal timeout does not bound them.
+  if (WiFi.status() == WL_CONNECTED) ntp.update();
   unsigned long now = millis();
   if (now - lastClockMs >= CLOCK_MS) {
     lastClockMs = now;
