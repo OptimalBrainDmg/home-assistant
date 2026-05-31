@@ -1,7 +1,7 @@
 // PyPortal Fallout-terminal dashboard for Home Assistant.
 // Displays ADT7410 temp and ambient light readings, publishes them to HA via
 // MQTT auto-discovery, and shows toggle buttons for light zones defined in
-// /config.json on the SD card.
+// /config.jsn on the SD card.
 
 #include <Adafruit_GFX.h>
 #include <Adafruit_ILI9341.h>
@@ -75,7 +75,7 @@
 #define RECONN_MS        5000UL   // retry MQTT every 5 s
 #define LIGHTING_TIMEOUT 60000UL  // return to main screen after 1 min idle
 
-// ── CREDENTIALS (loaded from /config.json on SD card) ────────────────────────
+// ── CREDENTIALS (loaded from /config.jsn on SD card) ────────────────────────
 static char cfgWifiSsid[64];
 static char cfgWifiPass[64];
 static char cfgMqttHost[64];
@@ -420,12 +420,12 @@ static void updateOutsideDisplay() {
 
 static bool loadConfig() {
   if (!SD.begin(SD_CS)) {
-    renderBootMsg("SD INIT FAILED- CHECK CARD");
+    renderBootMsg("SD INIT FAILED: CHECK CARD");
     return false;
   }
   File f = SD.open("config.jsn");
   if (!f) {
-    renderBootMsg("CONFIG.JSON NOT FOUND ON SD");
+    renderBootMsg("CONFIG.JSN NOT FOUND ON SD");
     return false;
   }
 
@@ -433,7 +433,7 @@ static bool loadConfig() {
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) {
-    renderBootMsg("CONFIG.JSON PARSE ERROR");
+    renderBootMsg("CONFIG.JSN PARSE ERROR");
     return false;
   }
 
