@@ -103,7 +103,7 @@ static char       cfgOutsideTempTopic[TOPIC_LEN];
 static char       cfgWeatherTopic[TOPIC_LEN];
 static char       cfgHumidityTopic[TOPIC_LEN];
 static char       cfgTzTopic[TOPIC_LEN];
-static int        tzDstOffset = 0;
+static int        tzMqttOffset = 0;
 
 // ── LAYOUT Y-POSITIONS (text baselines for FreeMono9pt7b) ────────────────────
 #define Y_HDR1   13
@@ -539,8 +539,8 @@ static void mqttCallback(char* topic, byte* payload, unsigned int len) {
     char tmp[8] = {};
     unsigned int copy = len < sizeof(tmp) - 1 ? len : sizeof(tmp) - 1;
     memcpy(tmp, payload, copy);
-    tzDstOffset = atoi(tmp);
-    ntp.setTimeOffset((tzOffsetHours + tzDstOffset) * 3600L);
+    tzMqttOffset = atoi(tmp);
+    ntp.setTimeOffset(tzMqttOffset * 3600L);
     return;
   }
 
@@ -802,7 +802,7 @@ void setup() {
   connectWiFi();
 
   renderBootMsg("SYNCING REAL-TIME CLOCK...");
-  ntp.setTimeOffset((tzOffsetHours + tzDstOffset) * 3600L);
+  ntp.setTimeOffset((tzOffsetHours + tzMqttOffset) * 3600L);
   ntp.begin();
   ntp.update();
 
