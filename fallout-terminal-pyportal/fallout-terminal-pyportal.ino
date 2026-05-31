@@ -54,7 +54,7 @@
 #define COLOR_TITLE  0x57E0   // bright green for header
 #define COLOR_BTN_ON 0x0180   // dark green fill for active zone buttons
 
-#define ROTATION 1            // landscape; USB connector at top
+#define ROTATION 3            // landscape; USB connector at bottom (180° mount)
 #define SCR_W    320
 #define SCR_H    240
 #define LINE_H    17          // pixels between text baselines (FreeMono9pt7b)
@@ -676,13 +676,14 @@ static void playSound(const char* path) {
 
 // ── TOUCH ─────────────────────────────────────────────────────────────────────
 
-// Maps raw touch coordinates to screen pixels for ROTATION 1 (landscape, USB top).
-// If touch is inverted or swapped, adjust the map() arguments here.
+// Maps raw touch coordinates to screen pixels for ROTATION 3 (landscape, USB bottom).
+// Axes are swapped (p.y→X, p.x→Y) as in rotation 1; both directions are inverted
+// relative to rotation 1 because the display is mounted 180°.
 static int touchToScrX(const TSPoint& p) {
-  return constrain(map(p.y, TOUCH_Y_MIN, TOUCH_Y_MAX, SCR_W - 1, 0), 0, SCR_W - 1);
+  return constrain(map(p.y, TOUCH_Y_MIN, TOUCH_Y_MAX, 0, SCR_W - 1), 0, SCR_W - 1);
 }
 static int touchToScrY(const TSPoint& p) {
-  return constrain(map(p.x, TOUCH_X_MIN, TOUCH_X_MAX, SCR_H - 1, 0), 0, SCR_H - 1);
+  return constrain(map(p.x, TOUCH_X_MIN, TOUCH_X_MAX, 0, SCR_H - 1), 0, SCR_H - 1);
 }
 
 static void handleTouch() {
