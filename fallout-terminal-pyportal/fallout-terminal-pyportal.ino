@@ -38,6 +38,7 @@
 // Audio: DAC output on A0, amplifier enable on pin 50 (PA27).
 #define SPEAKER_SHUTDOWN 50
 #define AUDIO_OUT        A0
+#define AUDIO_GAIN       2  // software gain multiplier (1 = unity, higher = louder, clips if WAVs near full scale)
 #define SOUND_POWERON   "robco/sounds/poweron.wav"
 #define SOUND_POWEROFF  "robco/sounds/poweroff.wav"
 #define SOUND_BRI_DOWN  "robco/sounds/single4.wav"
@@ -101,6 +102,8 @@ static int        tzOffsetHours = 0;
 static char       cfgOutsideTempTopic[TOPIC_LEN];
 static char       cfgWeatherTopic[TOPIC_LEN];
 static char       cfgHumidityTopic[TOPIC_LEN];
+static char       cfgTzTopic[TOPIC_LEN];
+static int        tzDstOffset = 0;
 
 // ── LAYOUT Y-POSITIONS (text baselines for FreeMono9pt7b) ────────────────────
 #define Y_HDR1   13
@@ -444,6 +447,7 @@ static bool loadConfig() {
   strlcpy(cfgOutsideTempTopic, doc["outside_temp_topic"] | "", sizeof(cfgOutsideTempTopic));
   strlcpy(cfgWeatherTopic,     doc["weather_topic"]       | "", sizeof(cfgWeatherTopic));
   strlcpy(cfgHumidityTopic,    doc["humidity_topic"]      | "", sizeof(cfgHumidityTopic));
+  strlcpy(cfgTzTopic,         doc["tz_topic"]             | "", sizeof(cfgTzTopic));
 
   JsonArray arr = doc["zones"].as<JsonArray>();
   numZones = 0;
@@ -530,6 +534,15 @@ static void mqttCallback(char* topic, byte* payload, unsigned int len) {
     memcpy(dst, src, copy);
     dst[copy] = '\0';
   };
+
+  if (strlen(cfgTzTopic) && strcmp(topic, cfgTzTopic) == 0) {
+    char tmp[8] = {};
+    unsigned int copy = len < sizeof(tmp) - 1 ? len : sizeof(tmp) - 1;
+    memcpy(tmp, payload, copy);
+    tzDstOffset = atoi(tmp);
+    ntp.setTimeOffset((tzOffsetHours + tzDstOffset) * 3600L);
+    return;
+  }
 
   if (strlen(cfgOutsideTempTopic) && strcmp(topic, cfgOutsideTempTopic) == 0) {
     copyStr(outsideTempStr, sizeof(outsideTempStr), payload, len);
@@ -640,7 +653,10 @@ static void playSound(const char* path) {
     int n = f.read(buf, sizeof(buf));
     for (int i = 0; i + 1 < n; i += 2) {
       int16_t s = (int16_t)(buf[i] | (buf[i + 1] << 8));
-      analogWrite(AUDIO_OUT, (uint16_t)((s + 32768) >> 4));
+      int32_t g = (int32_t)s * AUDIO_GAIN;
+      if (g > 32767) g = 32767;
+      if (g < -32768) g = -32768;
+      analogWrite(AUDIO_OUT, (uint16_t)((g + 32768) >> 4));
       nextUs += periodUs;
       uint32_t now = micros();
       if (nextUs > now)
@@ -786,7 +802,7 @@ void setup() {
   connectWiFi();
 
   renderBootMsg("SYNCING REAL-TIME CLOCK...");
-  ntp.setTimeOffset(tzOffsetHours * 3600L);
+  ntp.setTimeOffset((tzOffsetHours + tzDstOffset) * 3600L);
   ntp.begin();
   ntp.update();
 
@@ -818,6 +834,7 @@ void loop() {
         if (strlen(cfgOutsideTempTopic)) mqtt.subscribe(cfgOutsideTempTopic);
         if (strlen(cfgWeatherTopic))     mqtt.subscribe(cfgWeatherTopic);
         if (strlen(cfgHumidityTopic))    mqtt.subscribe(cfgHumidityTopic);
+        if (strlen(cfgTzTopic))         mqtt.subscribe(cfgTzTopic);
         publishDiscovery();
       }
     }

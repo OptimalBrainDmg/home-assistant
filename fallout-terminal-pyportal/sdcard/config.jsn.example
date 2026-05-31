@@ -6,6 +6,7 @@
   "mqtt_user": "YOUR_MQTT_USERNAME",
   "mqtt_pass": "YOUR_MQTT_PASSWORD",
   "tz_offset": -5,
+  "tz_topic": "home/time/utc_offset",
   "outside_temp_topic": "home/weather/temperature",
   "weather_topic": "home/weather/state",
   "humidity_topic": "home/weather/humidity",
