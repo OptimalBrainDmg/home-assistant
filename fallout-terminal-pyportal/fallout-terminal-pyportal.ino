@@ -468,10 +468,12 @@ static bool loadConfig() {
 static void connectWiFi() {
   renderBootMsg("CONNECTING TO WIFI...");
   int status = WL_IDLE_STATUS;
-  while (status != WL_CONNECTED) {
+  unsigned long start = millis();
+  while (status != WL_CONNECTED && millis() - start < 30000UL) {
     status = WiFi.begin(cfgWifiSsid, cfgWifiPass);
     if (status != WL_CONNECTED) delay(3000);
   }
+  if (status != WL_CONNECTED) renderBootMsg("WIFI FAILED - CONTINUING");
   byte mac[6];
   WiFi.macAddress(mac);
   snprintf(deviceId, sizeof(deviceId), "pyportal_%02x%02x%02x",
@@ -809,6 +811,7 @@ void setup() {
   mqtt.setServer(cfgMqttHost, cfgMqttPort);
   mqtt.setCallback(mqttCallback);
   mqtt.setBufferSize(512);
+  mqtt.setSocketTimeout(3);  // 3 s TCP timeout; default 15 s blocks handleTouch()
 
   renderFullScreen();
 
