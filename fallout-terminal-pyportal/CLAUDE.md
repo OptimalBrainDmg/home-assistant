@@ -39,7 +39,7 @@ The lightstrip publishes to `home/<deviceId>/light/<i>/state`. You can see the d
 - **Adafruit ILI9341** by Adafruit
 - **Adafruit GFX Library** by Adafruit
 - **Adafruit TouchScreen** by Adafruit
-- **ArduinoJson** by Benoit Blanchon (v6.x)
+- **ArduinoJson** by Benoit Blanchon (v7.x — `JsonDocument` API, no template size)
 - **PubSubClient** by Nick O'Leary
 - **NTPClient** by Fabrice Weinberg
 - **WiFiNINA** by Arduino *(not installed — must add)*
