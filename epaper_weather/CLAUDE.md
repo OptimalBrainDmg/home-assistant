@@ -14,7 +14,8 @@ Battery-powered e-paper weather station. Wakes every 15 minutes, fetches current
 
 - **LilyGo-EPD47** — install manually from `https://github.com/Xinyuan-LilyGO/LilyGo-EPD47`
   - API: `epd_init()`, `epd_poweron()`, `epd_poweroff_all()`, `epd_clear()`, `epd_draw_grayscale_image()`, drawing primitives in `epd_driver.h`
-  - Bundled font: `FiraSans` — only font available; `advance_y=50`, `ascender=39`, `descender=-12`
+  - Bundled font: `FiraSans` — `advance_y=50`, `ascender=39`, `descender=-12`; used for all main conditions text
+- **Roboto** — `roboto-font/roboto.h`, generated at 12pt/150dpi; `advance_y=29`, `ascender=24`, `descender=-7`; used for battery indicator text and hourly temp/precip lines. OFL 1.1 license in `roboto-font/LICENSE`.
 - **ArduinoJson v7** — `JsonDocument` API (no template size parameter)
 - **HTTPClient + WiFi** — bundled with ESP32 Arduino core
 
@@ -60,15 +61,16 @@ Everything runs in `setup()`; `loop()` is empty. Wake cycle:
 ## Display Layout (960×540)
 
 ```
-y   0– 51  Header: location | date | battery bar
-y  52–307  Main: [compass 0–244] | [conditions 246–719] | [120px icon 721–959]
+y   0– 51  Header: location | date | [battery bar top-right] [battery text bottom-right]
+y  52–307  Main: [120px icon 0–244] | [conditions 246–709] | [compass 711–959]
 y 308–539  Hourly: 8 columns × 120px (time / icon / temp / precip%)
 ```
 
-- **Compass**: programmatic circle + cardinal ticks + filled arrow at `wind_bearing`; "CALM" if null
+- **Compass**: programmatic circle + cardinal ticks + filled arrow at `wind_bearing`; "CALM" if null. `DIV2_X=710`, `COMP_CX=840` (hardcoded independently so the divider line can be adjusted without shifting the compass).
 - **Icons**: programmatic in `icons.h` using `epd_*` primitives; two sizes (120px current, 56px hourly)
+- **Battery indicator**: bar (`seg_w=8`, `seg_h=12`, 5 segments) pinned to top-right at `by=4`; Roboto text right-aligned below it at `HEADER_H - 9`
 - **Text baselines** (center panel, 5 rows): y = 92, 142, 192, 242, 292
-- **Hourly baselines**: time y=354, temp y=470, precip y=520; icon center y=396
+- **Hourly baselines**: time y=386, temp y=485, precip y=520; icon center y=428
 
 ## Data Source
 
