@@ -26,8 +26,8 @@
 // ── Layout ───────────────────────────────────────────────────────
 #define HEADER_H        51
 #define MAIN_TOP        52
-#define MAIN_BOT        307
-#define HOURLY_TOP      308
+#define MAIN_BOT        339
+#define HOURLY_TOP      340
 // Panel dividers
 #define DIV1_X          245
 #define DIV2_X          710
@@ -39,8 +39,9 @@
 #define COND_LEFT       258
 // Current icon
 #define ICON_CX         (DIV1_X / 2)
-#define ICON_CY         COMP_CY
+#define ICON_CY         (COMP_CY - 24)
 #define ICON_SIZE       120
+#define ICON_TEMP_Y     (COMP_CY + ICON_SIZE/2 + 43)
 // Main body text baselines (5 rows, advance_y=50, bottom at 292+12=304 ≤ MAIN_BOT)
 #define ROW1_Y          92
 #define ROW2_Y          142
@@ -385,11 +386,12 @@ static void renderMain(const WeatherCache &cur, uint8_t *fb) {
     // Compass (left panel)
     drawCompass(COMP_CX, COMP_CY, COMP_R, cur.wind_bearing, cur.wind_calm, fb);
 
-    // Conditions (center panel), left-aligned at COND_LEFT
+    // Temperature centered below icon (left panel)
     char buf[64];
     snprintf(buf, sizeof(buf), "%.0f\xC2\xB0""F", cur.temperature);
-    drawText(buf, COND_LEFT, ROW1_Y, fb);
+    drawTextCentered(buf, ICON_CX, ICON_TEMP_Y, fb);
 
+    // Conditions (center panel), left-aligned at COND_LEFT
     snprintf(buf, sizeof(buf), "%.0f%% humidity", cur.humidity);
     drawText(buf, COND_LEFT, ROW2_Y, fb);
 
