@@ -1,0 +1,15 @@
+clear-night,weather-night,F0594
+cloudy,weather-cloudy,F0590
+fog,weather-fog,F0591
+hail,weather-hail,F0592
+lightning,weather-lightning,F0593
+lightning-rainy,weather-lightning-rainy,F067E
+partlycloudy,weather-partly-cloudy,F0595
+pouring,weather-pouring,F0596
+rainy,weather-rainy,F0597
+snowy,weather-snowy,F0598
+snowy-rainy,weather-snowy-rainy,F067F
+sunny,weather-sunny,F0599
+windy,weather-windy,F059D
+windy-variant,weather-windy-variant,F059E
+exceptional,weather-cloudy-alert,F0F2F

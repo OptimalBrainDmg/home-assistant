@@ -10,6 +10,7 @@ Arduino firmware for DIY devices that integrate with Home Assistant via MQTT aut
 | [`temp_humidity_sensor_battery`](temp_humidity_sensor_battery/) | Seeed XIAO ESP32C6 + SHTC3 I2C sensor (battery-powered, deep sleep) | Temperature (°C), Humidity (%) |
 | [`lightstrip`](lightstrip/) | Adafruit HUZZAH32 ESP32 Feather + WS2812B LED strip | Light (on/off, brightness, RGB color) per zone |
 | [`fallout-terminal-pyportal`](fallout-terminal-pyportal/) | Adafruit PyPortal + ADT7410 + ambient light sensor | Temperature (°C), Light (ADC); touch UI for light zones |
+| [`epaper_weather`](epaper_weather/) | LILYGO T5 4.7" e-paper (ESP32-WROVER-E, battery-powered, deep sleep) | Weather dashboard: current conditions + 8-hour forecast from NWS via HA REST API |
 
 ## Setup
 
@@ -17,6 +18,6 @@ Each sketch folder contains a `CLAUDE.md` (and optionally a README) with hardwar
 
 General steps for any sketch:
 
-1. Copy `secrets.h.example` → `secrets.h` and fill in your WiFi and MQTT credentials (or, for the PyPortal, edit `sdcard/config.jsn` and copy it to the SD card).
+1. Copy `secrets.h.example` → `secrets.h` and fill in your credentials (or, for the PyPortal, edit `sdcard/config.jsn` and copy it to the SD card). MQTT-based sketches need WiFi + broker credentials; `epaper_weather` needs WiFi + a Home Assistant long-lived access token.
 2. Follow the sketch-specific instructions to select your hardware variant and flash the firmware.
-3. In Home Assistant, install the **Mosquitto broker** add-on and enable the **MQTT integration** — devices and entities will appear automatically.
+3. For MQTT-based sketches: install the **Mosquitto broker** add-on in Home Assistant and enable the **MQTT integration** — devices and entities will appear automatically. `epaper_weather` reads data directly from the HA REST API and does not use MQTT.

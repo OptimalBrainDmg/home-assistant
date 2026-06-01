@@ -1,0 +1,12 @@
+profiles:
+  default:
+    fqbn: esp32:esp32:esp32wrover
+    platforms:
+      - platform: esp32:esp32 (2.0.17)
+        platform_index_url: https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+    libraries:
+      - dependency: Button2 (2.6.0)
+      - LilyGo-EPD47 (1.0.1)
+      - dependency: SensorLib (0.4.1)
+      - ArduinoJson (7.4.3)
+
