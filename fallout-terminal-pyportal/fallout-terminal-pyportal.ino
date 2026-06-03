@@ -65,7 +65,7 @@
 #define TOUCH_X_MAX   900
 #define TOUCH_Y_MIN   111
 #define TOUCH_Y_MAX   907
-#define TOUCH_P_MIN   400
+#define TOUCH_P_MIN   600
 #define TOUCH_P_MAX  1200
 #define TOUCH_DEBOUNCE_MS 400UL
 
