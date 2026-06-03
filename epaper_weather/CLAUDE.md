@@ -66,10 +66,10 @@ y  52–339  Main: [120px icon + temp below 0–244] | [conditions 246–709] | 
 y 340–539  Hourly: 8 columns × 120px (time / icon / temp / precip%)
 ```
 
-- **Compass**: programmatic circle + cardinal ticks + filled arrow at `wind_bearing`; "CALM" if null. `DIV2_X=710`, `COMP_CX=840` (hardcoded independently so the divider line can be adjusted without shifting the compass).
+- **Compass** (`COMP_R=90`, `COMP_INNER_R=60`): outer ring + inner ring; 8px cardinal ticks + 4px intercardinal ticks; N/S/E/W/NE/NW/SE/SW labels in Roboto outside ring; wind speed (FiraSans, integer) + "mph" (Roboto) centered in inner circle; filled arrow triangle in the annulus pointing toward `wind_bearing`. "Calm" (FiraSans) shown in inner circle when wind is null. `DIV2_X=710`, `COMP_CX=840` hardcoded independently.
 - **Icons**: programmatic in `icons.h` using `epd_*` primitives; two sizes (120px current, 56px hourly)
 - **Battery indicator**: bar (`seg_w=8`, `seg_h=12`, 5 segments) pinned to top-right at `by=4`; Roboto text right-aligned below it at `HEADER_H - 9`
-- **Text baselines** (center panel, 4 rows): y = 142, 192, 242, 292 (humidity, pressure, wind, condition); temperature is below the icon in the left panel at `ICON_CY + ICON_SIZE/2 + 43`
+- **Text baselines** (center panel, 3 rows): y = 142, 192, 242 (humidity, pressure, condition); temperature is below the icon in the left panel at `COMP_CY + ICON_SIZE/2 + 43`
 - **Hourly baselines**: time y=386, temp y=485, precip y=520; icon center y=428
 
 ## Data Source

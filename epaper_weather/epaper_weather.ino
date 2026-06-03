@@ -30,11 +30,12 @@
 #define HOURLY_TOP      340
 // Panel dividers
 #define DIV1_X          245
-#define DIV2_X          710
+#define DIV2_X          702
 // Compass
-#define COMP_CX         840
+#define COMP_CX         831
 #define COMP_CY         ((MAIN_TOP + MAIN_BOT) / 2)
-#define COMP_R          78
+#define COMP_R          90
+#define COMP_INNER_R    60
 // Current-conditions panel
 #define COND_LEFT       258
 // Current icon
@@ -216,7 +217,9 @@ static bool fetchForecast(ForecastSlot slots[], char *date_buf, int date_buf_len
     JsonArray forecast = doc["service_response"][HA_ENTITY_ID]["forecast"].as<JsonArray>();
     int count = 0;
     bool date_written = false;
+    bool skipped_current = false;
     for (JsonObject entry : forecast) {
+        if (!skipped_current) { skipped_current = true; continue; }
         if (count >= FORECAST_COUNT) break;
         const char *dt = entry["datetime"] | "";
         parseDatetime(dt, slots[count].time_label, sizeof(slots[count].time_label),
@@ -283,46 +286,55 @@ static void drawTextCenteredRoboto(const char *str, int32_t cx, int32_t y, uint8
 
 // ── Compass ──────────────────────────────────────────────────────
 static void drawCompass(int32_t cx, int32_t cy, int32_t r,
-                        int bearing, bool calm, uint8_t *fb) {
+                        int bearing, bool calm, float wind_speed, uint8_t *fb) {
     epd_draw_circle(cx, cy, r, 0x00, fb);
+    epd_draw_circle(cx, cy, COMP_INNER_R, 0x00, fb);
 
-    // Cardinal tick marks
-    for (int a = 0; a < 360; a += 90) {
+    // Tick marks: 8px at cardinals, 4px at intercardinals
+    for (int a = 0; a < 360; a += 45) {
         float rad = a * (float)M_PI / 180.0f;
-        epd_draw_line(cx + (int)(cosf(rad)*(r-6)), cy + (int)(sinf(rad)*(r-6)),
-                      cx + (int)(cosf(rad)*r),     cy + (int)(sinf(rad)*r),
+        int tick = (a % 90 == 0) ? 8 : 4;
+        epd_draw_line(cx + (int)(cosf(rad)*(r-tick)), cy + (int)(sinf(rad)*(r-tick)),
+                      cx + (int)(cosf(rad)*r),         cy + (int)(sinf(rad)*r),
                       0x00, fb);
     }
 
-    // Cardinal labels outside circle: N=up, S=down, E=right, W=left
-    // For E/W: drawTextCentered places BASELINE at y; to visually center a capital
-    // letter at cy we need baseline = cy + ascender/2 ≈ cy + 20.
-    // For S: ascender (39px) would reach into the circle at cy+r+14; push baseline
-    // to cy+r+45 so the top of the glyph clears the circle edge by ~6px.
-    int lo = r + 14;
-    drawTextCentered("N", cx,          cy - lo + 5,  fb);
-    drawTextCentered("S", cx,          cy + r + 39,  fb);
-    drawTextCentered("E", cx + lo,     cy + 16,      fb);
-    drawTextCentered("W", cx - lo - 8, cy + 16,      fb);
+    // Labels (Roboto) outside ring. lo = distance from center to label visual center.
+    // Roboto ascender=24 → baseline = visual_center_y + 12.
+    float lo = r + 22.0f;
+    float d  = lo * 0.7071f;  // diagonal offset for intercardinals
+    drawTextCenteredRoboto("N",  cx,           cy - (int)lo + 12,  fb);
+    drawTextCenteredRoboto("S",  cx,           cy + (int)lo + 12,  fb);
+    drawTextCenteredRoboto("E",  cx + (int)lo, cy + 12,            fb);
+    drawTextCenteredRoboto("W",  cx - (int)lo, cy + 12,            fb);
+    drawTextCenteredRoboto("NE", cx + (int)d,  cy - (int)d + 12,   fb);
+    drawTextCenteredRoboto("NW", cx - (int)d,  cy - (int)d + 12,   fb);
+    drawTextCenteredRoboto("SE", cx + (int)d,  cy + (int)d + 12,   fb);
+    drawTextCenteredRoboto("SW", cx - (int)d,  cy + (int)d + 12,   fb);
 
     if (calm) {
-        drawTextCentered("CALM", cx, cy, fb);
+        drawTextCentered("Calm", cx, cy, fb);
     } else {
-        // Filled arrow pointing in wind_bearing direction
-        // dx, dy: unit vector toward bearing (0=N means screen-up = negative y)
-        float rad = bearing * (float)M_PI / 180.0f;
-        float dx = sinf(rad), dy = -cosf(rad);
-        float px = -dy, py2 = dx;  // perpendicular unit vector
+        // Speed (FiraSans) and "mph" (Roboto) centered in inner circle
+        char sbuf[8];
+        snprintf(sbuf, sizeof(sbuf), "%.0f", wind_speed);
+        drawTextCentered(sbuf, cx, cy, fb);
+        drawTextCenteredRoboto("mph", cx, cy + 26, fb);
 
-        int32_t tip_x  = cx + (int)(dx * r * 0.72f);
-        int32_t tip_y  = cy + (int)(dy * r * 0.72f);
-        int     hw = r / 8;  // arrow half-width at base
-        int32_t b1x = cx + (int)(px * hw), b1y = cy + (int)(py2 * hw);
-        int32_t b2x = cx - (int)(px * hw), b2y = cy - (int)(py2 * hw);
+        // Arrow in annulus: tip near outer ring, base near inner ring
+        float rad     = bearing * (float)M_PI / 180.0f;
+        float dx      = sinf(rad), dy = -cosf(rad);   // unit vector toward bearing
+        float perp_x  = -dy,  perp_y = dx;            // perpendicular
+
+        float base_cx = cx + dx * (COMP_INNER_R + 5);
+        float base_cy = cy + dy * (COMP_INNER_R + 5);
+        int32_t tip_x = cx + (int)(dx * (r - 5));
+        int32_t tip_y = cy + (int)(dy * (r - 5));
+        int32_t b1x   = (int)(base_cx + perp_x * 10);
+        int32_t b1y   = (int)(base_cy + perp_y * 10);
+        int32_t b2x   = (int)(base_cx - perp_x * 10);
+        int32_t b2y   = (int)(base_cy - perp_y * 10);
         epd_fill_triangle(tip_x, tip_y, b1x, b1y, b2x, b2y, 0x00, fb);
-
-        // Tail dot at center
-        epd_fill_circle(cx, cy, r / 10, 0x00, fb);
     }
 }
 
@@ -383,8 +395,8 @@ static void renderMain(const WeatherCache &cur, uint8_t *fb) {
     epd_draw_vline(DIV1_X, MAIN_TOP, MAIN_BOT - MAIN_TOP, 0x00, fb);
     epd_draw_vline(DIV2_X, MAIN_TOP, MAIN_BOT - MAIN_TOP, 0x00, fb);
 
-    // Compass (left panel)
-    drawCompass(COMP_CX, COMP_CY, COMP_R, cur.wind_bearing, cur.wind_calm, fb);
+    // Compass (right panel)
+    drawCompass(COMP_CX, COMP_CY, COMP_R, cur.wind_bearing, cur.wind_calm, cur.wind_speed, fb);
 
     // Temperature centered below icon (left panel)
     char buf[64];
@@ -398,15 +410,7 @@ static void renderMain(const WeatherCache &cur, uint8_t *fb) {
     snprintf(buf, sizeof(buf), "%.2f inHg", cur.pressure);
     drawText(buf, COND_LEFT, ROW3_Y, fb);
 
-    if (cur.wind_calm) {
-        strlcpy(buf, "Calm", sizeof(buf));
-    } else {
-        snprintf(buf, sizeof(buf), "%.1f mph  %s",
-                 cur.wind_speed, bearingDir(cur.wind_bearing));
-    }
-    drawText(buf, COND_LEFT, ROW4_Y, fb);
-
-    drawText(condLabel(cur.condition), COND_LEFT, ROW5_Y, fb);
+    drawText(condLabel(cur.condition), COND_LEFT, ROW4_Y, fb);
 
     // Weather icon (right panel)
     drawMdiIcon(cur.condition, ICON_CX, ICON_CY, ICON_SIZE, fb);
