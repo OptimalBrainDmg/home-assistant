@@ -111,6 +111,7 @@ static bool connectWiFi() {
         if (millis() - t > WIFI_TIMEOUT_MS) return false;
         delay(100);
     }
+    delay(500);  // let TCP stack settle after association
     return true;
 }
 
@@ -152,7 +153,9 @@ static bool fetchCurrent(WeatherCache &out) {
     http.setTimeout(HTTP_TIMEOUT_MS);
     http.addHeader("Authorization", "Bearer " HA_TOKEN);
 
-    if (http.GET() != HTTP_CODE_OK) { http.end(); return false; }
+    int cur_status = http.GET();
+    Serial.printf("Current HTTP status: %d  url: %s\n", cur_status, url.c_str());
+    if (cur_status != HTTP_CODE_OK) { http.end(); return false; }
 
     JsonDocument filter;
     filter["state"] = true;
@@ -290,12 +293,17 @@ static void drawCompass(int32_t cx, int32_t cy, int32_t r,
     epd_draw_circle(cx, cy, r, 0x00, fb);
     epd_draw_circle(cx, cy, COMP_INNER_R, 0x00, fb);
 
-    // Tick marks: 8px at cardinals, 4px at intercardinals
+    // Tick marks: 8px at cardinals, 4px at intercardinals — on both rings
     for (int a = 0; a < 360; a += 45) {
         float rad = a * (float)M_PI / 180.0f;
         int tick = (a % 90 == 0) ? 8 : 4;
         epd_draw_line(cx + (int)(cosf(rad)*(r-tick)), cy + (int)(sinf(rad)*(r-tick)),
                       cx + (int)(cosf(rad)*r),         cy + (int)(sinf(rad)*r),
+                      0x00, fb);
+        epd_draw_line(cx + (int)(cosf(rad)*COMP_INNER_R),
+                      cy + (int)(sinf(rad)*COMP_INNER_R),
+                      cx + (int)(cosf(rad)*(COMP_INNER_R-tick)),
+                      cy + (int)(sinf(rad)*(COMP_INNER_R-tick)),
                       0x00, fb);
     }
 
@@ -480,8 +488,13 @@ void setup() {
     char date_str[20] = "---";
 
     if (stale == FRESH) {
-        bool cur_ok    = fetchCurrent(current);
-        bool fcast_ok  = fetchForecast(forecast, date_str, sizeof(date_str));
+        bool cur_ok   = fetchCurrent(current);
+        bool fcast_ok = fetchForecast(forecast, date_str, sizeof(date_str));
+        if (!cur_ok || !fcast_ok) {
+            delay(1000);
+            if (!cur_ok)   cur_ok   = fetchCurrent(current);
+            if (!fcast_ok) fcast_ok = fetchForecast(forecast, date_str, sizeof(date_str));
+        }
         Serial.printf("current=%d forecast=%d\n", cur_ok, fcast_ok);
 
         if (cur_ok && fcast_ok) {
