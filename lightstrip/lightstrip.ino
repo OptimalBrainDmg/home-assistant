@@ -4,7 +4,10 @@
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_MCP9808.h>
 #include <ArduinoJson.h>
+#include <esp_task_wdt.h>
 #include "secrets.h"
+
+#define WDT_TIMEOUT_S 90
 
 // ══════════════════════════════════════════════════════════════════════════════
 // CONFIGURATION — edit this section only
@@ -204,15 +207,18 @@ void connectWiFi() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   while (WiFi.status() != WL_CONNECTED) {
+    esp_task_wdt_reset();
     delay(500);
     Serial.print(".");
   }
+  WiFi.setSleep(false);
   Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
 }
 
 // ── MQTT connection ────────────────────────────────────────────────────────────
 void connectMQTT() {
   while (!mqtt.connected()) {
+    esp_task_wdt_reset();
     Serial.print("Connecting to MQTT...");
     if (mqtt.connect(deviceId.c_str(), MQTT_USER, MQTT_PASS)) {
       Serial.println(" connected.");
@@ -268,15 +274,22 @@ void setup() {
   pixelStrip.show();
 #endif
 
+  const esp_task_wdt_config_t wdtCfg = { WDT_TIMEOUT_S * 1000u, 0, true };
+  esp_task_wdt_init(&wdtCfg);
+  esp_task_wdt_add(NULL);
+
   connectWiFi();
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setBufferSize(1024);
+  mqtt.setKeepAlive(30);
+  mqtt.setSocketTimeout(10);
   mqtt.setCallback(onMessage);
   connectMQTT();
 }
 
 // ── Loop ───────────────────────────────────────────────────────────────────────
 void loop() {
+  esp_task_wdt_reset();
   connectWiFi();
   if (!mqtt.connected()) connectMQTT();
   mqtt.loop();
