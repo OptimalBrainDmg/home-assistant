@@ -1,5 +1,6 @@
 #include <WiFi.h>
 #include <Wire.h>
+#include <Preferences.h>
 #include <PubSubClient.h>
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_MCP9808.h>
@@ -69,6 +70,31 @@ Adafruit_NeoPixel* pixelStrips[NUM_ZONES];
 #else
 Adafruit_NeoPixel  pixelStrip(SEG_NUM_LEDS, SEG_PIN, NEO_GRB + NEO_KHZ800);
 #endif
+
+// ── NVS state persistence ──────────────────────────────────────────────────────
+Preferences prefs;
+
+void saveZoneState(int i) {
+  char key[8];
+  snprintf(key, sizeof(key), "z%d", i);
+  uint8_t buf[5] = { zoneState[i].on, zoneState[i].brightness,
+                     zoneState[i].r,  zoneState[i].g, zoneState[i].b };
+  prefs.begin("ls", false);
+  prefs.putBytes(key, buf, sizeof(buf));
+  prefs.end();
+}
+
+void loadZoneState(int i) {
+  char key[8];
+  snprintf(key, sizeof(key), "z%d", i);
+  uint8_t buf[5] = { 0, 255, 255, 255, 255 };
+  prefs.begin("ls", true);
+  size_t len = prefs.getBytes(key, buf, sizeof(buf));
+  prefs.end();
+  if (len == sizeof(buf))
+    zoneState[i] = { (bool)buf[0], buf[1], buf[2], buf[3], buf[4] };
+  // else: no saved state yet — keep default (off, full white)
+}
 
 // ── MQTT / WiFi ────────────────────────────────────────────────────────────────
 String deviceId;
@@ -151,6 +177,7 @@ void onMessage(char* topic, byte* payload, unsigned int len) {
     }
 
     applyZone(i);
+    saveZoneState(i);
     publishState(i);
     return;
   }
@@ -243,7 +270,7 @@ void setup() {
   deviceId = "huzzah32_" + String((uint32_t)(ESP.getEfuseMac() >> 24), HEX);
 
   for (int i = 0; i < (int)NUM_ZONES; i++) {
-    zoneState[i]       = { false, 255, 255, 255, 255 };
+    loadZoneState(i);
     commandTopics[i]   = "home/" + deviceId + "/light/" + i + "/set";
     stateTopics[i]     = "home/" + deviceId + "/light/" + i + "/state";
     discoveryTopics[i] = "homeassistant/light/" + deviceId + "_zone" + i + "/config";
@@ -265,13 +292,11 @@ void setup() {
     pixelStrips[i] = new Adafruit_NeoPixel(
       STRIPS[i].numLeds, STRIPS[i].pin, NEO_GRB + NEO_KHZ800);
     pixelStrips[i]->begin();
-    pixelStrips[i]->clear();
-    pixelStrips[i]->show();
+    applyZone(i);
   }
 #else
   pixelStrip.begin();
-  pixelStrip.clear();
-  pixelStrip.show();
+  for (int i = 0; i < (int)NUM_ZONES; i++) applyZone(i);
 #endif
 
   const esp_task_wdt_config_t wdtCfg = { WDT_TIMEOUT_S * 1000u, 0, true };
