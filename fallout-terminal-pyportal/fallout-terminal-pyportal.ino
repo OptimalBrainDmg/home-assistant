@@ -1,5 +1,5 @@
 // PyPortal Fallout-terminal dashboard for Home Assistant.
-// Displays ADT7410 temp and ambient light readings, publishes them to HA via
+// Displays ADT7410 temperature readings, publishes them to HA via
 // MQTT auto-discovery, and shows toggle buttons for light zones defined in
 // /config.jsn on the SD card.
 
@@ -31,9 +31,6 @@
 #define TOUCH_YP  A4
 #define TOUCH_XM  A7
 #define TOUCH_YM  A6
-
-// Analog light sensor pin. Reads 0–1023 (uncalibrated ADC counts).
-#define LIGHT_PIN A2
 
 // Audio: DAC output on A0, amplifier enable on pin 50 (PA27).
 #define SPEAKER_SHUTDOWN 50
@@ -137,7 +134,6 @@ static char          outsideTempStr[24] = "--";
 static char          weatherStr[24]     = "--";
 static char          humidityStr[16]    = "--";
 static float         lastTempC      = 0;
-static int           lastLightRaw   = 0;
 static unsigned long lastSensorMs   = 0;
 static unsigned long lastClockMs    = 0;
 static unsigned long lastReconnMs   = 0;
@@ -393,7 +389,6 @@ static void updateDateTime() {
 
 static void updateSensors() {
   if (hasTempSensor) lastTempC = adt7410.readTempC();
-  lastLightRaw = analogRead(LIGHT_PIN);
 
   if (currentScreen != SCREEN_MAIN) return;
 
@@ -484,9 +479,8 @@ static void connectWiFi() {
 
 static void publishDiscovery() {
   char topic[80], payload[512];
-  char stateTopicTemp[64], stateTopicLight[64];
-  snprintf(stateTopicTemp,  sizeof(stateTopicTemp),  "home/%s/sensor/temperature", deviceId);
-  snprintf(stateTopicLight, sizeof(stateTopicLight), "home/%s/sensor/light",       deviceId);
+  char stateTopicTemp[64];
+  snprintf(stateTopicTemp, sizeof(stateTopicTemp), "home/%s/sensor/temperature", deviceId);
 
   // Temperature sensor
   snprintf(topic, sizeof(topic), "homeassistant/sensor/%s_temperature/config", deviceId);
@@ -501,19 +495,6 @@ static void publishDiscovery() {
     "\"model\":\"Adafruit PyPortal\"}}",
     stateTopicTemp, deviceId, deviceId);
   mqtt.publish(topic, payload, true);
-
-  // Light level sensor
-  snprintf(topic, sizeof(topic), "homeassistant/sensor/%s_light/config", deviceId);
-  snprintf(payload, sizeof(payload),
-    "{\"name\":\"Light Level\","
-    "\"state_topic\":\"%s\","
-    "\"unit_of_measurement\":\"ADC\","
-    "\"value_template\":\"{{value}}\","
-    "\"unique_id\":\"%s_light\","
-    "\"device\":{\"identifiers\":[\"%s\"],\"name\":\"Fallout Terminal\","
-    "\"model\":\"Adafruit PyPortal\"}}",
-    stateTopicLight, deviceId, deviceId);
-  mqtt.publish(topic, payload, true);
 }
 
 static void publishSensors() {
@@ -524,10 +505,6 @@ static void publishSensors() {
     snprintf(buf, sizeof(buf), "%.1f", lastTempC);
     mqtt.publish(topic, buf);
   }
-
-  snprintf(topic, sizeof(topic), "home/%s/sensor/light", deviceId);
-  snprintf(buf, sizeof(buf), "%d", lastLightRaw);
-  mqtt.publish(topic, buf);
 }
 
 static void mqttCallback(char* topic, byte* payload, unsigned int len) {

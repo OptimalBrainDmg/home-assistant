@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Arduino firmware for an Adafruit PyPortal (original) that renders a Fallout-terminal-style dashboard. Publishes ADT7410 temperature and ambient light sensor readings to Home Assistant via MQTT auto-discovery, and displays touch-toggleable buttons for MQTT light zones defined in `config.jsn` on the SD card.
+Arduino firmware for an Adafruit PyPortal (original) that renders a Fallout-terminal-style dashboard. Publishes ADT7410 temperature readings to Home Assistant via MQTT auto-discovery, and displays touch-toggleable buttons for MQTT light zones defined in `config.jsn` on the SD card.
 
 ## Hardware
 
@@ -14,7 +14,7 @@ Arduino firmware for an Adafruit PyPortal (original) that renders a Fallout-term
 | 3.2" ILI9341 TFT display | 320×240, 8-bit parallel interface |
 | Resistive touchscreen | 4-wire, read via A4/A5/A6/A7 |
 | ADT7410 | I2C temperature sensor, address 0x48 (SDA=20, SCL=21) |
-| Ambient light sensor | Analog, pin A2 (uncalibrated ADC 0–1023) |
+| Ambient light sensor | Analog, pin A2 (unused — not tracked or published) |
 | Micro-SD slot | CS = pin 32 |
 | ESP32 WiFi co-processor | WiFiNINA library; pins auto-configured by "Adafruit PyPortal M4" board selection |
 
@@ -126,7 +126,6 @@ Single-file sketch (`fallout-terminal-pyportal.ino`). Configuration block at the
 - **Partial redraws**: only `updateDateTime()`, `updateSensors()`, and `renderZoneButton(i)` / `renderLightingButton(i)` redraw during normal operation; static chrome is drawn once at screen transitions to avoid full-screen flicker.
 - **MQTT reconnect**: non-blocking in `loop()` using `millis()`; re-subscribes and re-publishes discovery on reconnect.
 - **ADT7410**: detected at runtime in `setup()`. If `adt7410.begin()` returns false (sensor not present or wrong address), `hasTempSensor` stays false and temperature displays as `NO SENSOR`. Temperature is still published if the sensor is found.
-- **Light sensor**: raw 10-bit ADC value (0–1023), published as-is. HA will show it as `ADC` units. Calibration to lux requires knowing the sensor's specific response curve.
 - **`mqtt.setBufferSize(512)`**: required — default 256 bytes is too small for the discovery payloads.
 - **Audio**: DAC output on A0 (`AUDIO_OUT`, `DAC_Channel0`); speaker amplifier enabled via pin 50 (`SPEAKER_SHUTDOWN`, PA27). No external audio library — `playSound(path)` streams 16-bit mono PCM WAV from SD directly to the DAC using `analogWrite()` paced by `micros()`. Blocking. Silently no-ops if the SD file is missing. `playSound` scans RIFF sub-chunks to find the `data` chunk regardless of offset; it skips unknown chunks by reading-and-discarding rather than `f.seek()` because the Arduino SD library's seek silently fails for large forward jumps (macOS inserts a `FLLR` chunk of ~4044 bytes to align audio data to offset 4096).
 

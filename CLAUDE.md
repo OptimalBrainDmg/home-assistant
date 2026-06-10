@@ -11,8 +11,9 @@ Collection of Arduino sketches for ESP8266/ESP32-based sensors and actuators tha
 | `temp_humidity_sensor/` | LOLIN D1 Mini V4 (ESP8266) | Temperature, Humidity | `esp8266:esp8266:d1_mini` |
 | `temp_humidity_sensor_battery/` | Seeed XIAO ESP32C6 (deep sleep) | Temperature, Humidity | `esp32:esp32:XIAO_ESP32C6` |
 | `lightstrip/` | Adafruit HUZZAH32 ESP32 Feather | Light zones (on/off, brightness, RGB) | `esp32:esp32:featheresp32` |
-| `fallout-terminal-pyportal/` | Adafruit PyPortal (SAMD51 + ESP32 WiFi) | Temperature, Light; touch UI for light zones | `adafruit:samd:adafruit_pyportal_m4` |
+| `fallout-terminal-pyportal/` | Adafruit PyPortal (SAMD51 + ESP32 WiFi) | Temperature; touch UI for light zones | `adafruit:samd:adafruit_pyportal_m4` |
 | `epaper_weather/` | LILYGO T5 4.7" (ESP32-WROVER-E, deep sleep) | Weather dashboard (REST from NWS/HA) | `esp32:esp32:esp32wrover` |
+| `indoor_air_monitor/` | Seeed XIAO ESP32C6 (deep sleep) | Temperature, Humidity, CO2, TVOC, eCO2 | `esp32:esp32:XIAO_ESP32C6` |
 
 `temp_humidity_sensor_battery/enclosure/sensor.scad` and `lightstrip/enclosure/lightstrip.scad` are parametric OpenSCAD models for 3D-printable enclosures.
 
