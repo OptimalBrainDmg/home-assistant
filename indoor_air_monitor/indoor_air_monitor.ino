@@ -55,6 +55,7 @@ bool readSTCC4(uint16_t &co2, float &temp, float &humid) {
 
 bool readENS160(float temp, float humid, uint16_t &tvoc, uint16_t &eco2) {
   ens160.setTempAndHum(temp, humid);
+  delay(1100);  // ENS160 updates at 1Hz in STANDARD_MODE; wait one full cycle
   tvoc = ens160.getTVOC();
   eco2 = ens160.getECO2();
   return true;
