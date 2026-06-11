@@ -1,5 +1,5 @@
 inner_dims = [58, 38];
-sensor = [16,13];
+sensor = [16.4,13];
 
 wall = 1.6;
 tabd = 3;
@@ -12,17 +12,21 @@ $fn=32;
 
 
 top();
-translate([0, inner_dims.y+wall*2+10,0]) bottom();
+translate([0, inner_dims.y+wall*2+10,0]) bottom(12);
 
 module top() {
     h=16;
     difference() {
         union() {
             case(h);
-            translate([wall+inner_dims.x*0.07,wall,0]) cube([inner_dims.x*.86+wall,wall,wall+h+3]);
-            translate([wall+inner_dims.x*0.07,inner_dims.y,0]) cube([inner_dims.x*.86+wall,wall,wall+h+3]);
-            translate([inner_dims.x*.12+wall, wall+tabd/4+0.2, h+tabd]) rotate([0,90,0]) cylinder(h=inner_dims.x*.76, d=tabd);
-            translate([inner_dims.x*.12+wall, wall+inner_dims.y-tabd/4-0.2, h+tabd]) rotate([0,90,0]) cylinder(h=inner_dims.x*.76, d=tabd);
+            
+            // walls to connect to base
+            translate([wall+inner_dims.x*0.01,wall,0]) cube([inner_dims.x*.98,wall,wall+h+3]);
+            translate([wall+inner_dims.x*0.01,inner_dims.y,0]) cube([inner_dims.x*.98,wall,wall+h+3]);
+            
+            // snap cyinders
+            translate([inner_dims.x*.12+wall, wall+tabd/4+0.15, h+tabd]) rotate([0,90,0]) cylinder(h=inner_dims.x*.76, d=tabd);
+            translate([inner_dims.x*.12+wall, wall+inner_dims.y-tabd/4-0.15, h+tabd]) rotate([0,90,0]) cylinder(h=inner_dims.x*.76, d=tabd);
         }
         
         // cut the cylinders for friction fit
@@ -36,12 +40,14 @@ module top() {
         translate([inner_dims.x,wall+inner_dims.y/2-cord/2,h+wall]) rotate([0,90,0]) cube([cord,cord,wall*4]);
         
     }
-    translate([wall+2+sensor.x+2.5,wall+inner_dims.y/2,wall]) post(5,m3, 4,3);
+    
+    // screw post for sensor
+    translate([wall+2+sensor.x+4.55,wall+inner_dims.y/2,wall]) post(5, m3, 3, 2.8);
 }
 
 
-module bottom() {
-    h = 12+wall;
+module bottom(height = 12) {
+    h = height+wall;
     difference() {
         case(h);
         
