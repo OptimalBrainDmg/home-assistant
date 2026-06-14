@@ -42,14 +42,16 @@ void goToSleep() {
 // SHT41 is wired only to the STCC4's internal I2C controller (not the main bus),
 // so temperature and humidity come from readMeasurement() alongside CO2.
 bool readSTCC4(uint16_t &co2, float &temp, float &humid) {
-  stcc4.sleepMode(false);
+  // Do not sleep the STCC4 between wake cycles — putting it to sleep causes
+  // the CO2 circuit to miss the next single-shot measurement, returning stale
+  // data while SHT41 T/H (always running) still updates. Power cost is ~950 µA,
+  // negligible against ENS160's 7–25 mA always-on.
   if (!stcc4.measureSingleShot()) return false;
   delay(500);  // 500ms per datasheet
   uint16_t status;
   if (!stcc4.readMeasurement(&co2, &temp, &humid, &status)) return false;
   temp  = round(temp  * 10.0f) / 10.0f;
   humid = round(humid * 10.0f) / 10.0f;
-  stcc4.sleepMode(true);
   return true;
 }
 
