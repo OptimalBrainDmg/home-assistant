@@ -9,8 +9,9 @@ Arduino firmware for DIY devices that integrate with Home Assistant via MQTT aut
 | [`temp_humidity_sensor`](temp_humidity_sensor/) | LOLIN D1 Mini V4 + AM2320 or SHTC3 I2C sensor | Temperature (°C), Humidity (%) |
 | [`temp_humidity_sensor_battery`](temp_humidity_sensor_battery/) | Seeed XIAO ESP32C6 + SHTC3 I2C sensor (battery-powered, deep sleep) | Temperature (°C), Humidity (%) |
 | [`lightstrip`](lightstrip/) | Adafruit HUZZAH32 ESP32 Feather + WS2812B LED strip | Light (on/off, brightness, RGB color) per zone |
-| [`fallout-terminal-pyportal`](fallout-terminal-pyportal/) | Adafruit PyPortal + ADT7410 + ambient light sensor | Temperature (°C), Light (ADC); touch UI for light zones |
+| [`fallout-terminal-pyportal`](fallout-terminal-pyportal/) | Adafruit PyPortal + ADT7410 | Temperature (°C); touch UI for light zones |
 | [`epaper_weather`](epaper_weather/) | LILYGO T5 4.7" e-paper (ESP32-WROVER-E, battery-powered, deep sleep) | Weather dashboard: current conditions + 8-hour forecast from NWS via HA REST API |
+| [`indoor_air_monitor`](indoor_air_monitor/) | Seeed XIAO ESP32C6 + Adafruit 6478 (STCC4+SHT41) + ENS160 (battery-powered, deep sleep) | Temperature (°C), Humidity (%), CO2 (ppm), TVOC (ppb), eCO2 (ppm) |
 
 ## Setup
 
