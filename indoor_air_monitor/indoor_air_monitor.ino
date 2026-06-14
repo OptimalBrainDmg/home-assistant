@@ -7,12 +7,9 @@
 #include "secrets.h"
 
 // ── Configuration ──────────────────────────────────────────────────────────────
-const uint32_t SLEEP_DURATION_SEC = 300;   // 5 minutes between readings
+const uint32_t SLEEP_DURATION_SEC = 300;  // 5 minutes between readings
 const uint32_t WIFI_TIMEOUT_MS    = 20000;
 const uint32_t MQTT_TIMEOUT_MS    = 10000;
-
-// ── RTC state (survives deep sleep, reset only on power-on) ────────────────────
-RTC_DATA_ATTR bool firstBoot = true;
 
 // ── Globals ────────────────────────────────────────────────────────────────────
 String deviceId;
@@ -24,32 +21,13 @@ DFRobot_ENS160_I2C  ens160(&Wire, 0x53);  // ADDR pin high on this breakout
 WiFiClient   wifiClient;
 PubSubClient mqtt(wifiClient);
 
-// ── Sleep ──────────────────────────────────────────────────────────────────────
-void goToSleep() {
-  // ENS160 stays powered in STANDARD_MODE — do NOT power it off before sleeping.
-  // The XIAO 3.3V rail remains on during deep sleep, preserving the ENS160
-  // baseline and avoiding the 3-minute warm-up penalty on next wake.
-  if (mqtt.connected()) mqtt.disconnect();
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-  }
-  esp_sleep_enable_timer_wakeup((uint64_t)SLEEP_DURATION_SEC * 1000000ULL);
-  esp_deep_sleep_start();
-}
-
 // ── Sensor reads ───────────────────────────────────────────────────────────────
 // SHT41 is wired only to the STCC4's internal I2C controller (not the main bus),
 // so temperature and humidity come from readMeasurement() alongside CO2.
 bool readSTCC4(uint16_t &co2, float &temp, float &humid) {
-  // Do not sleep the STCC4 between wake cycles — putting it to sleep causes
-  // the CO2 circuit to miss the next single-shot measurement, returning stale
-  // data while SHT41 T/H (always running) still updates. Power cost is ~950 µA,
-  // negligible against ENS160's 7–25 mA always-on.
-  if (!stcc4.measureSingleShot()) return false;
-  delay(500);  // 500ms per datasheet
   uint16_t status;
   if (!stcc4.readMeasurement(&co2, &temp, &humid, &status)) return false;
+  Serial.printf("STCC4 status: 0x%04X\n", status);
   temp  = round(temp  * 10.0f) / 10.0f;
   humid = round(humid * 10.0f) / 10.0f;
   return true;
@@ -57,7 +35,6 @@ bool readSTCC4(uint16_t &co2, float &temp, float &humid) {
 
 bool readENS160(float temp, float humid, uint16_t &tvoc, uint16_t &eco2) {
   ens160.setTempAndHum(temp, humid);
-  delay(1100);  // ENS160 updates at 1Hz in STANDARD_MODE; wait one full cycle
   tvoc = ens160.getTVOC();
   eco2 = ens160.getECO2();
   return true;
@@ -120,10 +97,10 @@ bool connectMQTT() {
   return false;
 }
 
-// ── Setup (runs once per wake cycle) ──────────────────────────────────────────
+// ── Setup — runs once on power-on ─────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);
-  delay(3000);  // time to attach serial monitor before sensors/sleep
+  delay(3000);  // time to attach serial monitor
   Wire.begin();  // XIAO ESP32C6: SDA=D4(GPIO22), SCL=D5(GPIO23)
 
   // I2C scan — helps diagnose wiring; remove once hardware is confirmed
@@ -143,62 +120,67 @@ void setup() {
   deviceId   = "air_" + String((uint32_t)(mac & 0xFFFFFF), HEX);
   stateTopic = "home/" + deviceId + "/state";
   Serial.print("Device ID: "); Serial.println(deviceId);
-  Serial.println(firstBoot ? "First boot" : "Warm wake");
-  firstBoot = false;
 
   if (!stcc4.begin()) {
-    Serial.println("STCC4 init failed");
-    goToSleep();
+    Serial.println("STCC4 init failed — halting");
+    while (1) delay(1000);
   }
-  // ENS160 begin() internally calls setPWRMode(STANDARD_MODE) — no separate
-  // mode call needed. Baseline is preserved across deep sleep as long as the
-  // 3.3V rail stays on.
+  if (!stcc4.enableContinuousMeasurement(true)) {
+    Serial.println("STCC4 continuous mode failed — halting");
+    while (1) delay(1000);
+  }
+  // ENS160 begin() sets STANDARD_MODE. Baseline accumulates while powered.
   if (ens160.begin() != NO_ERR) {
-    Serial.println("ENS160 init failed");
-    goToSleep();
-  }
-
-  // Read sensors before WiFi to avoid radio self-heating skew on SHT41
-  float temp, humid;
-  uint16_t co2;
-  if (!readSTCC4(co2, temp, humid)) {
-    Serial.println("STCC4 read failed");
-    goToSleep();
-  }
-  Serial.printf("T=%.1f C  RH=%.1f %%  CO2=%u ppm\n", temp, humid, co2);
-
-  uint16_t tvoc, eco2;
-  readENS160(temp, humid, tvoc, eco2);
-  Serial.printf("TVOC=%u ppb  eCO2=%u ppm  (ENS160 status=%d)\n",
-                tvoc, eco2, ens160.getENS160Status());
-
-  if (!connectWiFi()) {
-    Serial.println("WiFi timed out — sleeping.");
-    goToSleep();
+    Serial.println("ENS160 init failed — halting");
+    while (1) delay(1000);
   }
 
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setBufferSize(1024);
 
-  if (!connectMQTT()) {
-    Serial.println("MQTT timed out — sleeping.");
-    goToSleep();
-  }
-
-  JsonDocument doc;
-  doc["temperature"] = temp;
-  doc["humidity"]    = humid;
-  doc["co2"]         = co2;
-  doc["tvoc"]        = tvoc;
-  doc["eco2"]        = eco2;
-  String payload;
-  serializeJson(doc, payload);
-  mqtt.publish(stateTopic.c_str(), payload.c_str());
-  Serial.println("Published: " + payload);
-
-  for (int i = 0; i < 5; i++) { mqtt.loop(); delay(10); }
-
-  goToSleep();
+  // Wait one full 1Hz cycle for both sensors to produce their first readings.
+  ens160.setTempAndHum(25.0, 50.0);  // placeholder until STCC4 T/H available
+  delay(1100);
 }
 
-void loop() {}
+// ── Loop — read, publish, wait, repeat ────────────────────────────────────────
+void loop() {
+  // Read sensors before WiFi to avoid radio self-heating skew on SHT41
+  float temp, humid;
+  uint16_t co2;
+  if (!readSTCC4(co2, temp, humid)) {
+    Serial.println("STCC4 read failed");
+  } else {
+    Serial.printf("T=%.1f C  RH=%.1f %%  CO2=%u ppm\n", temp, humid, co2);
+
+    uint16_t tvoc, eco2;
+    readENS160(temp, humid, tvoc, eco2);
+    Serial.printf("TVOC=%u ppb  eCO2=%u ppm  (ENS160 status=%d)\n",
+                  tvoc, eco2, ens160.getENS160Status());
+
+    if (!connectWiFi()) {
+      Serial.println("WiFi timed out");
+    } else if (!connectMQTT()) {
+      Serial.println("MQTT timed out");
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+    } else {
+      JsonDocument doc;
+      doc["temperature"] = temp;
+      doc["humidity"]    = humid;
+      doc["co2"]         = co2;
+      doc["tvoc"]        = tvoc;
+      doc["eco2"]        = eco2;
+      String payload;
+      serializeJson(doc, payload);
+      mqtt.publish(stateTopic.c_str(), payload.c_str());
+      Serial.println("Published: " + payload);
+      for (int i = 0; i < 5; i++) { mqtt.loop(); delay(10); }
+      mqtt.disconnect();
+      WiFi.disconnect(true);
+      WiFi.mode(WIFI_OFF);
+    }
+  }
+
+  delay(SLEEP_DURATION_SEC * 1000);
+}

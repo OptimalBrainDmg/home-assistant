@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Battery-powered indoor air quality station. Wakes every 5 minutes, reads all sensors, publishes to MQTT, then deep-sleeps. ENS160 remains always-on in STANDARD_MODE during sleep to preserve its baseline and avoid the 3-minute warm-up penalty.
+Always-on (source-powered) indoor air quality station. Reads all sensors every 5 minutes, publishes to MQTT, then delays. Both sensors stay continuously powered and initialized — the STCC4 runs in continuous measurement mode and the ENS160 in STANDARD_MODE at all times.
 
 
 ## Hardware
@@ -14,10 +14,10 @@ Battery-powered indoor air quality station. Wakes every 5 minutes, reads all sen
 
 **Modules:**
 
-| Module | Chips | What it measures | I2C address(es) | Always-on during sleep? |
-|--------|-------|-----------------|-----------------|------------------------|
-| Adafruit 6478 | STCC4 + SHT41 | CO2 (ppm), Temperature (°C), Humidity (%RH) | STCC4: 0x64 | No — single-shot, 500ms |
-| ENS160 breakout | ENS160 | TVOC (ppb), eCO2 (ppm, estimated) | 0x53 (ADDR high) | **Yes — STANDARD_MODE** |
+| Module | Chips | What it measures | I2C address(es) |
+|--------|-------|-----------------|-----------------|
+| Adafruit 6478 | STCC4 + SHT41 | CO2 (ppm), Temperature (°C), Humidity (%RH) | STCC4: 0x64 |
+| ENS160 breakout | ENS160 | TVOC (ppb), eCO2 (ppm, estimated) | 0x53 (ADDR high) |
 
 **Adafruit 6478 notes:**
 - The STCC4 and SHT41 are co-located on the PCB and wired together — STCC4's dedicated I2C controller (SDA_C/SCL_C) reads the SHT41 directly for its internal temp/humidity compensation. This is the intended use case; no manual wiring of the compensation connection required.
@@ -28,24 +28,17 @@ Battery-powered indoor air quality station. Wakes every 5 minutes, reads all sen
 - STCC4 average current: 950 µA; peak: 4.2 mA (note: Adafruit product page says "below 100 µA" — this appears to be idle/standby current; use Sensirion datasheet spec of 950 µA avg for power budgeting)
 - Adafruit Arduino library available (covers both chips)
 
-**ENS160 power strategy:**
-The XIAO 3.3V rail stays powered during ESP32-C6 deep sleep, so the ENS160 continues running in STANDARD_MODE. Do NOT power-cycle the ENS160 between wake cycles — doing so resets its resistance baseline and triggers a 3-minute warm-up. The DFRobot_ENS160 library's `begin()` calls `setPWRMode(ENS160_STANDARD_MODE)` internally, so no separate mode-set call is needed. `RTC_DATA_ATTR bool firstBoot` is used only as a log marker to distinguish first boot from warm wake — it does not gate initialization behavior.
+**STCC4 measurement strategy:**
+The STCC4 must be initialized with `begin()` + `enableContinuousMeasurement(true)` once at power-on and then left running. Do NOT call `begin()` between readings — it sends a soft reset that tears down continuous mode, after which `readMeasurement()` returns a stale default value (390 ppm) for CO2 while T/H from the SHT41 still update correctly. Deep sleep and light sleep both cause C++ global object destructors/constructors to run, resetting the library's internal `i2c_dev` pointer and forcing a re-`begin()` on every wake. For this reason the sketch uses `delay()` instead of any sleep mode — this keeps the sensor fully initialized across the loop.
+
+**ENS160 strategy:**
+Do NOT power-cycle the ENS160 — doing so resets its resistance baseline and triggers a 3-minute warm-up. The DFRobot_ENS160 library's `begin()` calls `setPWRMode(ENS160_STANDARD_MODE)` internally; no separate mode-set call is needed.
 
 **Why both ENS160 and STCC4:**
 ENS160 eCO2 is *estimated* from TVOC gas resistance — useful as a relative indicator but unreliable for absolute CO2 levels and can be skewed by cooking smells, cleaning products, etc. STCC4 measures true CO2. Both together give complementary data.
 
-## Power Budget (2000 mAh LiPo, 5-min cycle)
-
-| Source | Current | Notes |
-|--------|---------|-------|
-| ENS160 STANDARD_MODE | ~7–25 mA | Dominates sleep budget; wide range depends on measurement phase |
-| XIAO board (LDO + LED) | ~1–3 mA | Remove power LED for battery builds |
-| STCC4 (sleep) | ~950 µA | Negligible vs ENS160 |
-| ESP32-C6 deep sleep | ~20 µA | Negligible |
-| WiFi wake (~15s active) | ~4.5 mAh/hr amortized | 12 wakes/hour |
-| **Estimated runtime** | **~3–7 days** | ENS160 STANDARD_MODE current dominates; remove LED and reduce sleep interval to improve |
-
-> **Note:** Original estimate assumed "LP mode" (~3 mA) that does not exist in the DFRobot_ENS160 library. STANDARD_MODE is the only active measurement mode available.
+## Power
+Source-powered only (USB 5V). Not suitable for battery use in the current always-on configuration.
 
 ## Required Libraries
 
@@ -90,14 +83,19 @@ All published to a single state topic as a flat JSON object; 5 entities auto-dis
 
 ## Architecture
 
-Everything in `setup()`; `loop()` is empty. Wake cycle:
-1. `Wire.begin()` → init STCC4 and ENS160 (`begin()` sets STANDARD_MODE automatically)
-2. Read all sensors before WiFi (avoids radio self-heating skew on SHT41):
-   - `readSTCC4(co2, temp, humid)` — `sleepMode(false)` → `measureSingleShot()` → `delay(500)` → `readMeasurement()` (returns CO2 + T/H from internal SHT41) → `sleepMode(true)`
-   - `readENS160()` — feeds STCC4 temp/humid to `setTempAndHum()`, then reads `getTVOC()` / `getECO2()`
-3. `connectWiFi()` → 20s timeout; `goToSleep()` on failure
-4. `connectMQTT()` → publish retained discovery configs; `goToSleep()` on failure
-5. Publish single JSON state payload to `stateTopic`
-6. Call `mqtt.loop()` 5× to flush outbound messages, then `goToSleep()`
+`setup()` initializes sensors once; `loop()` runs the read/publish/delay cycle continuously.
 
-`goToSleep()` disconnects MQTT and WiFi, arms the timer wakeup, then calls `esp_deep_sleep_start()`. ENS160 is left in STANDARD_MODE — 3.3V rail stays on.
+**setup():**
+1. `Wire.begin()` → I2C scan
+2. `stcc4.begin()` → `stcc4.enableContinuousMeasurement(true)` → `ens160.begin()`
+3. `ens160.setTempAndHum(25.0, 50.0)` (placeholder) → `delay(1100)` for first measurement cycle
+4. `mqtt.setServer()` / `mqtt.setBufferSize(1024)`
+
+**loop():**
+1. `readSTCC4()` — `readMeasurement()` returns CO2 + T/H from the continuously-running sensor
+2. `readENS160()` — feeds STCC4 T/H to `setTempAndHum()`, then reads `getTVOC()` / `getECO2()`
+3. `connectWiFi()` → 20s timeout; skip publish on failure
+4. `connectMQTT()` → publish retained discovery configs
+5. Publish single JSON state payload to `stateTopic`
+6. `mqtt.loop()` 5× to flush, disconnect WiFi/MQTT
+7. `delay(300000)` — 5-minute interval before next reading
