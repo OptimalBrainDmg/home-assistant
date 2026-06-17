@@ -17,6 +17,7 @@ Battery-powered e-paper weather station. Wakes every 15 minutes, fetches current
   - Bundled font: `FiraSans` — `advance_y=50`, `ascender=39`, `descender=-12`; used for all main conditions text
 - **Roboto** — `roboto-font/roboto.h`, generated at 12pt/150dpi; `advance_y=29`, `ascender=24`, `descender=-7`; used for battery indicator text and hourly temp/precip lines. OFL 1.1 license in `roboto-font/LICENSE`.
 - **ArduinoJson v7** — `JsonDocument` API (no template size parameter)
+- **PubSubClient 2.8** — MQTT battery reporting; `setBufferSize(512)` called before connect
 - **HTTPClient + WiFi** — bundled with ESP32 Arduino core
 
 ## Build & Flash
@@ -41,6 +42,8 @@ Copy `secrets.h.example` to `secrets.h` and set:
 - `HA_TOKEN` — long-lived access token from HA profile page
 - `HA_ENTITY_ID` — the NWS weather entity (e.g. `weather.nws_43_77_...`)
 - `LOCATION_NAME` — display label shown in header
+- `MQTT_HOST` / `MQTT_PORT` — broker address (typically same host as HA, port 1883)
+- `MQTT_USER` / `MQTT_PASS` — broker credentials
 
 ## Architecture
 
@@ -52,9 +55,10 @@ Everything runs in `setup()`; `loop()` is empty. Wake cycle:
 4. `GET /api/states/<entity>` — current conditions (filtered ArduinoJson)
 5. `POST /api/services/weather/get_forecasts?return_response=true` — hourly forecast, first 8 entries
 6. On any HTTP failure → `DATA_ERR` stale mode
-7. `renderFrame()` → writes full dashboard to PSRAM framebuffer
-8. `epd_clear()` + `epd_draw_grayscale_image(epd_full_screen(), framebuffer)`
-9. `epd_poweroff_all()` + `WiFi.mode(WIFI_OFF)` + `esp_deep_sleep_start(15 min)`
+7. `publishBattery(pct)` — connects to MQTT broker, publishes HA auto-discovery config (retained) to `homeassistant/sensor/weather_<id>/battery/config` and state to `.../state`; 10s timeout, best-effort (display renders regardless)
+8. `renderFrame()` → writes full dashboard to PSRAM framebuffer
+9. `epd_clear()` + `epd_draw_grayscale_image(epd_full_screen(), framebuffer)`
+10. `epd_poweroff_all()` + `WiFi.mode(WIFI_OFF)` + `esp_deep_sleep_start(15 min)`
 
 **Stale data cache** (`RTC_DATA_ATTR`): last-good `WeatherCache` and `ForecastSlot[8]` survive deep sleep. On WiFi or HTTP failure the display re-renders from cache with a "NO WIFI" or "DATA ERR" badge in the header.
 

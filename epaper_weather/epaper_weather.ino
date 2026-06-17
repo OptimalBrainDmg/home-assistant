@@ -8,6 +8,7 @@
 #include "roboto-font/roboto.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <PubSubClient.h>
 #include <ArduinoJson.h>
 #include <math.h>
 #include "secrets.h"
@@ -17,8 +18,9 @@
 #define SLEEP_US (15ULL * 60 * 1000000)
 
 // ── Network ──────────────────────────────────────────────────────
-#define WIFI_TIMEOUT_MS 20000
-#define HTTP_TIMEOUT_MS 10000
+#define WIFI_TIMEOUT_MS  20000
+#define HTTP_TIMEOUT_MS  10000
+#define MQTT_TIMEOUT_MS  10000
 
 // ── Battery ──────────────────────────────────────────────────────
 #define BATT_PIN 36
@@ -113,6 +115,52 @@ static bool connectWiFi() {
     }
     delay(500);  // let TCP stack settle after association
     return true;
+}
+
+// ── MQTT battery publish ─────────────────────────────────────────
+static void publishBattery(int pct) {
+    uint64_t mac  = ESP.getEfuseMac();
+    String deviceId   = "weather_" + String((uint32_t)(mac & 0xFFFFFF), HEX);
+    String stateTopic = "homeassistant/sensor/" + deviceId + "/battery/state";
+
+    WiFiClient   wc;
+    PubSubClient mqtt(wc);
+    mqtt.setServer(MQTT_HOST, MQTT_PORT);
+    mqtt.setBufferSize(512);
+
+    uint32_t start = millis();
+    bool connected = false;
+    while (millis() - start < MQTT_TIMEOUT_MS) {
+        if (mqtt.connect(deviceId.c_str(), MQTT_USER, MQTT_PASS)) { connected = true; break; }
+        delay(500);
+    }
+    if (!connected) { Serial.println("MQTT connect failed — battery not reported"); return; }
+
+    // Retained discovery config
+    String configTopic = "homeassistant/sensor/" + deviceId + "/battery/config";
+    JsonDocument doc;
+    doc["name"]                = "Battery";
+    doc["state_topic"]         = stateTopic;
+    doc["device_class"]        = "battery";
+    doc["unit_of_measurement"] = "%";
+    doc["state_class"]         = "measurement";
+    doc["unique_id"]           = deviceId + "_battery";
+    doc["expire_after"]        = (15 * 60) * 3;
+    JsonObject dev        = doc["device"].to<JsonObject>();
+    dev["identifiers"][0] = deviceId;
+    dev["name"]           = "E-Paper Weather Station";
+    dev["model"]          = "LILYGO T5 4.7\"";
+    dev["manufacturer"]   = "LILYGO";
+    String configPayload;
+    serializeJson(doc, configPayload);
+    mqtt.publish(configTopic.c_str(), configPayload.c_str(), true);
+
+    // State: plain integer percentage
+    mqtt.publish(stateTopic.c_str(), String(pct).c_str());
+
+    for (int i = 0; i < 5; i++) { mqtt.loop(); delay(10); }
+    mqtt.disconnect();
+    Serial.printf("Battery reported via MQTT: %d%%\n", pct);
 }
 
 // ── Date parsing ─────────────────────────────────────────────────
@@ -506,6 +554,7 @@ void setup() {
             stale = DATA_ERR;
         }
 
+        publishBattery(batt_pct);
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
     }

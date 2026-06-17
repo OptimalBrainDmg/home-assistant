@@ -9,4 +9,5 @@ profiles:
       - LilyGo-EPD47 (1.0.1)
       - dependency: SensorLib (0.4.1)
       - ArduinoJson (7.4.3)
+      - PubSubClient (2.8)
 
