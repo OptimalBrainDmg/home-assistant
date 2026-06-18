@@ -110,7 +110,8 @@ Adafruit_MCP9808 mcp9808;
 bool             mcp9808Present = false;
 String           tempStateTopic;
 String           tempDiscoveryTopic;
-unsigned long    lastTempMs = 0;
+unsigned long    lastTempMs   = 0;
+unsigned long    lastMqttOkMs = 0;
 
 // ── Apply LED state for zone i ─────────────────────────────────────────────────
 void applyZone(int i) {
@@ -233,10 +234,15 @@ void connectWiFi() {
   Serial.print("Connecting to WiFi");
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  unsigned long startMs = millis();
   while (WiFi.status() != WL_CONNECTED) {
     esp_task_wdt_reset();
     delay(500);
     Serial.print(".");
+    if (millis() - startMs > 30000) {
+      Serial.println("\nWiFi timeout — restarting");
+      ESP.restart();
+    }
   }
   WiFi.setSleep(false);
   Serial.println("\nWiFi connected: " + WiFi.localIP().toString());
@@ -244,6 +250,7 @@ void connectWiFi() {
 
 // ── MQTT connection ────────────────────────────────────────────────────────────
 void connectMQTT() {
+  int failures = 0;
   while (!mqtt.connected()) {
     esp_task_wdt_reset();
     Serial.print("Connecting to MQTT...");
@@ -258,6 +265,10 @@ void connectMQTT() {
       if (mcp9808Present) publishTempDiscovery();
     } else {
       Serial.println(" failed (rc=" + String(mqtt.state()) + "), retry in 5s");
+      if (++failures >= 5) {
+        Serial.println("MQTT max retries — restarting");
+        ESP.restart();
+      }
       delay(5000);
     }
   }
@@ -310,6 +321,7 @@ void setup() {
   mqtt.setSocketTimeout(10);
   mqtt.setCallback(onMessage);
   connectMQTT();
+  lastMqttOkMs = millis();
 }
 
 // ── Loop ───────────────────────────────────────────────────────────────────────
@@ -317,7 +329,11 @@ void loop() {
   esp_task_wdt_reset();
   connectWiFi();
   if (!mqtt.connected()) connectMQTT();
-  mqtt.loop();
+  if (mqtt.loop()) lastMqttOkMs = millis();
+  if (millis() - lastMqttOkMs > 5UL * 60 * 1000) {
+    Serial.println("MQTT watchdog — restarting");
+    ESP.restart();
+  }
 
   if (mcp9808Present) {
     unsigned long now = millis();
