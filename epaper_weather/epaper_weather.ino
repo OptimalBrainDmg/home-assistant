@@ -31,7 +31,7 @@
 #define MAIN_BOT        339
 #define HOURLY_TOP      340
 // Panel dividers
-#define DIV1_X          245
+#define DIV1_X          208
 #define DIV2_X          702
 // Compass
 #define COMP_CX         831
@@ -39,16 +39,17 @@
 #define COMP_R          90
 #define COMP_INNER_R    60
 // Current-conditions panel
-#define COND_LEFT       258
+#define COND_LEFT       221
 // Current icon
 #define ICON_CX         (DIV1_X / 2)
 #define ICON_CY         (COMP_CY - 24)
 #define ICON_SIZE       120
+#define ICON_COND_Y     (ICON_CY + ICON_SIZE/2 + 28)
 #define ICON_TEMP_Y     (COMP_CY + ICON_SIZE/2 + 43)
 // Main body text baselines (5 rows, advance_y=50, bottom at 292+12=304 ≤ MAIN_BOT)
 #define ROW1_Y          92
-#define ROW2_Y          142
-#define ROW3_Y          192
+#define ROW2_Y          115
+#define ROW3_Y          165
 #define ROW4_Y          242
 #define ROW5_Y          292
 // Hourly section
@@ -59,6 +60,14 @@
 #define HICON_SIZE      56
 #define HTEMP_Y         485
 #define HPRECIP_Y       520
+// Sub-station boxes (bottom half of center panel)
+#define SUB_MID_Y       210
+#define SUB_MID_X       ((DIV1_X + DIV2_X) / 2)
+#define SUB_LABEL_Y     (SUB_MID_Y + 36)
+#define SUB_VAL_Y       (SUB_MID_Y + 95)
+#define SUB_LEFT_CX     ((DIV1_X + SUB_MID_X) / 2)
+#define SUB_RIGHT_CX    ((SUB_MID_X + DIV2_X) / 2)
+#define SUB_BOX_W       (SUB_MID_X - DIV1_X)
 
 // ── RTC-persistent cache ─────────────────────────────────────────
 struct WeatherCache {
@@ -76,6 +85,12 @@ struct ForecastSlot {
     char  condition[32];
     int16_t temperature;
     int16_t precip_pct;
+};
+
+struct StationSlot {
+    char  label[16];
+    float temp_f;    // NAN = no data
+    float humidity;  // NAN = no data
 };
 
 RTC_DATA_ATTR WeatherCache r_current;
@@ -161,6 +176,64 @@ static void publishBattery(int pct) {
     for (int i = 0; i < 5; i++) { mqtt.loop(); delay(10); }
     mqtt.disconnect();
     Serial.printf("Battery reported via MQTT: %d%%\n", pct);
+}
+
+// ── Sub-station MQTT fetch ───────────────────────────────────────
+// Subscribes to the two configured station topics and waits up to 5 s for
+// retained messages (source devices must publish retained state).
+static struct { StationSlot *slots; bool rx[2]; } s_st;
+
+static void stationCallback(char *topic, byte *payload, unsigned int len) {
+    const char *topics[2] = { STATION_0_TOPIC, STATION_1_TOPIC };
+    JsonDocument doc;
+    bool parsed = false;
+    for (int i = 0; i < 2; i++) {
+        if (strcmp(topic, topics[i]) != 0) continue;
+        if (!parsed) {
+            if (deserializeJson(doc, (const char *)payload, len)) return;
+            parsed = true;
+        }
+        JsonVariant tv = doc["temperature"];
+        float c = (tv.is<float>() || tv.is<int>()) ? tv.as<float>() : NAN;
+        JsonVariant hv = doc["humidity"];
+        s_st.slots[i].temp_f   = isnan(c) ? NAN : c * 9.0f / 5.0f + 32.0f;
+        s_st.slots[i].humidity = (hv.is<float>() || hv.is<int>()) ? hv.as<float>() : NAN;
+        s_st.rx[i] = true;
+    }
+}
+
+static void fetchStations(StationSlot slots[2]) {
+    s_st.slots = slots;
+    s_st.rx[0] = s_st.rx[1] = false;
+
+    WiFiClient wc;
+    PubSubClient mqttSub(wc);
+    mqttSub.setServer(MQTT_HOST, MQTT_PORT);
+    mqttSub.setBufferSize(512);
+    mqttSub.setCallback(stationCallback);
+
+    uint64_t mac = ESP.getEfuseMac();
+    String cid = "weather_" + String((uint32_t)(mac & 0xFFFFFF), HEX) + "_sub";
+
+    uint32_t t = millis();
+    while (millis() - t < MQTT_TIMEOUT_MS) {
+        if (mqttSub.connect(cid.c_str(), MQTT_USER, MQTT_PASS)) break;
+        delay(500);
+    }
+    if (!mqttSub.connected()) { Serial.println("Stations: MQTT connect failed"); return; }
+
+    mqttSub.subscribe(STATION_0_TOPIC);
+    mqttSub.subscribe(STATION_1_TOPIC);
+
+    uint32_t deadline = millis() + 5000;
+    while (millis() < deadline && !(s_st.rx[0] && s_st.rx[1])) {
+        mqttSub.loop();
+        delay(10);
+    }
+    mqttSub.disconnect();
+    Serial.printf("Stations: [%s] %.1f°F %.0f%%  [%s] %.1f°F %.0f%%\n",
+        slots[0].label, slots[0].temp_f, slots[0].humidity,
+        slots[1].label, slots[1].temp_f, slots[1].humidity);
 }
 
 // ── Date parsing ─────────────────────────────────────────────────
@@ -466,10 +539,9 @@ static void renderMain(const WeatherCache &cur, uint8_t *fb) {
     snprintf(buf, sizeof(buf), "%.2f inHg", cur.pressure);
     drawText(buf, COND_LEFT, ROW3_Y, fb);
 
-    drawText(condLabel(cur.condition), COND_LEFT, ROW4_Y, fb);
-
-    // Weather icon (right panel)
+    // Weather icon + condition label + temperature (left panel)
     drawMdiIcon(cur.condition, ICON_CX, ICON_CY, ICON_SIZE, fb);
+    drawTextCenteredRoboto(condLabel(cur.condition), ICON_CX, ICON_COND_Y, fb);
 }
 
 // ── Hourly forecast ───────────────────────────────────────────────
@@ -491,14 +563,44 @@ static void renderHourly(const ForecastSlot fcast[], uint8_t *fb) {
     }
 }
 
+// ── Sub-station boxes ────────────────────────────────────────────
+static void renderSubBoxes(const StationSlot stations[2], uint8_t *fb) {
+    epd_draw_hline(DIV1_X, SUB_MID_Y, DIV2_X - DIV1_X, 0x00, fb);
+    epd_draw_vline(SUB_MID_X, SUB_MID_Y, MAIN_BOT - SUB_MID_Y, 0x00, fb);
+
+    const int32_t label_cx[2] = { SUB_LEFT_CX,              SUB_RIGHT_CX             };
+    const int32_t temp_cx[2]  = { SUB_LEFT_CX  - SUB_BOX_W / 4,
+                                   SUB_RIGHT_CX - SUB_BOX_W / 4 };
+    const int32_t hum_cx[2]   = { SUB_LEFT_CX  + SUB_BOX_W / 4,
+                                   SUB_RIGHT_CX + SUB_BOX_W / 4 };
+
+    for (int i = 0; i < 2; i++) {
+        drawTextCenteredRoboto(stations[i].label, label_cx[i], SUB_LABEL_Y, fb);
+
+        char buf[16];
+        if (!isnan(stations[i].temp_f))
+            snprintf(buf, sizeof(buf), "%.0f\xC2\xB0""F", stations[i].temp_f);
+        else
+            strlcpy(buf, "--", sizeof(buf));
+        drawTextCentered(buf, temp_cx[i], SUB_VAL_Y, fb);
+
+        if (!isnan(stations[i].humidity))
+            snprintf(buf, sizeof(buf), "%.0f%%", stations[i].humidity);
+        else
+            strlcpy(buf, "--", sizeof(buf));
+        drawTextCentered(buf, hum_cx[i], SUB_VAL_Y, fb);
+    }
+}
+
 // ── Full frame render ─────────────────────────────────────────────
 static void renderFrame(const WeatherCache &cur, const ForecastSlot fcast[],
                         float batt_v, int batt_pct, const char *date_str,
-                        StaleReason stale) {
+                        StaleReason stale, const StationSlot stations[]) {
     memset(framebuffer, 0xFF, EPD_WIDTH * EPD_HEIGHT / 2);
     renderHeader(date_str, batt_v, batt_pct, stale, framebuffer);
     renderMain(cur, framebuffer);
     renderHourly(fcast, framebuffer);
+    renderSubBoxes(stations, framebuffer);
 }
 
 // ── Setup (full wake cycle) ───────────────────────────────────────
@@ -534,6 +636,11 @@ void setup() {
     WeatherCache current = {};
     ForecastSlot forecast[FORECAST_COUNT] = {};
     char date_str[20] = "---";
+    StationSlot stations[2] = {};
+    strlcpy(stations[0].label, STATION_0_LABEL, sizeof(stations[0].label));
+    stations[0].temp_f = stations[0].humidity = NAN;
+    strlcpy(stations[1].label, STATION_1_LABEL, sizeof(stations[1].label));
+    stations[1].temp_f = stations[1].humidity = NAN;
 
     if (stale == FRESH) {
         bool cur_ok   = fetchCurrent(current);
@@ -554,6 +661,7 @@ void setup() {
             stale = DATA_ERR;
         }
 
+        fetchStations(stations);
         publishBattery(batt_pct);
         WiFi.disconnect(true);
         WiFi.mode(WIFI_OFF);
@@ -566,7 +674,7 @@ void setup() {
         Serial.println("Using cached data");
     }
 
-    renderFrame(current, forecast, batt_v, batt_pct, date_str, stale);
+    renderFrame(current, forecast, batt_v, batt_pct, date_str, stale, stations);
 
     epd_clear();
     epd_draw_grayscale_image(epd_full_screen(), framebuffer);

@@ -173,7 +173,7 @@ void loop() {
       doc["eco2"]        = eco2;
       String payload;
       serializeJson(doc, payload);
-      mqtt.publish(stateTopic.c_str(), payload.c_str());
+      mqtt.publish(stateTopic.c_str(), payload.c_str(), true);
       Serial.println("Published: " + payload);
       for (int i = 0; i < 5; i++) { mqtt.loop(); delay(10); }
       mqtt.disconnect();
