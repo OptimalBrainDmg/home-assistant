@@ -1,14 +1,15 @@
 
+m2 = 1.9;
 m3 = 2.76;
 
-wall = 2.6;
+wall = 1.6;
 
-proto = [83, 51, wall];
-inner_dims = [95, 58];
+inner_dims = [100, 58];
+proto = [88.9, 52.1, wall]; // electrocookie
+//proto = [83, 51, wall]; // adafruit
 
-//case(25);
-cover(6);
-
+case(45);
+//cover(6);
 
 module cover(height) {
     difference() {
@@ -26,10 +27,10 @@ module cover(height) {
             }
             
             // screws for the cover
-            translate([4.5,4.5,0]) post(6, m3, height, height);
-            translate([inner_dims.x+2*wall-4.5,4.5,0]) post(6, m3, height, height);
-            translate([inner_dims.x+2*wall-4.5,inner_dims.y+2*wall-4.5,0]) post(6, m3, height, height);
-            translate([4.5,inner_dims.y+2*wall-4.5,0]) post(6, m3, height, height);  
+            translate([4.5,4.5,0]) post(8, m3, height, height);
+            translate([inner_dims.x+2*wall-4.5,4.5,0]) post(8, m3, height, height);
+            translate([inner_dims.x+2*wall-4.5,inner_dims.y+2*wall-4.5,0]) post(8, m3, height, height);
+            translate([4.5,inner_dims.y+2*wall-4.5,0]) post(8, m3, height, height);  
             
             // alignment tabs
             translate([wall+(inner_dims.x-50)/2,wall,wall]) cube([50,2,height]);
@@ -71,9 +72,6 @@ module case(height) {
                 translate([-0.01, -0.01, height]) cube([inner_dims.x + 2*wall+1, inner_dims.y + 2*wall+1, height]);
                 translate([wall, wall, wall]) cube([inner_dims.x, inner_dims.y, height]);
 
-                // cutout for LED wires
-                translate([wall+32,-1,height-12]) cube([1.2, 5, 15]);
-                
                 // cutouts for screws
                 translate([4.5,4.5,wall]) cylinder(d=6, h=height);
                 translate([inner_dims.x+2*wall-4.5,4.5,wall]) cylinder(d=6, h=height);
@@ -88,10 +86,10 @@ module case(height) {
             translate([wall+(inner_dims.x-proto.x)/2, wall+(inner_dims.y-proto.y)/2, 0]) mount();
             
             // screws for the cover
-            translate([4.5,4.5,wall]) post(6, m3, height-wall, 6);
-            translate([inner_dims.x+2*wall-4.5,4.5,wall]) post(6, m3, height-wall, 6);
-            translate([inner_dims.x+2*wall-4.5,inner_dims.y+2*wall-4.5,wall]) post(6, m3, height-wall, 6);
-            translate([4.5,inner_dims.y+2*wall-4.5,wall]) post(6, m3, height-wall, 6);  
+            translate([4.5,4.5,wall]) post(7, m3, height-wall, 7);
+            translate([inner_dims.x+2*wall-4.5,4.5,wall]) post(7, m3, height-wall, 6);
+            translate([inner_dims.x+2*wall-4.5,inner_dims.y+2*wall-4.5,wall]) post(7, m3, height-wall, 6);
+            translate([4.5,inner_dims.y+2*wall-4.5,wall]) post(7, m3, height-wall, 6);  
       
             // extra support for power 
             translate([wall,wall+(inner_dims.y-15)/2,wall]) cube([3.5,15,height-wall]);            
@@ -100,11 +98,34 @@ module case(height) {
 
         // cutout for power adapter
         translate([-1,wall+(inner_dims.y-11.5)/2,height-15]) cube([10,11.5,18]);
+        
+        // cutout for usb for programming
+        translate([inner_dims.x+wall-0.01, inner_dims.y/2-10+wall,wall+3+10]) rounded_cutout(10,20,5,[90,0,90]);
+
+        // cutouts for the led wires
+        translate([wall+inner_dims.x/2-5,-1,height-12]) rounded_cutout(3,10,wall*2+inner_dims.x+2,[270,0,0]);
     }
 
 }
 
+// electrocookie
 module mount() {
+    $fn = 10;
+    cube(proto);
+    
+    // m2 corner posts
+    translate([5.1, 8.25, 0]) post(6, m2, 5, 3); 
+    translate([proto.x - 5.1, 8.25, 0]) post(6, m2, 5, 3); 
+    translate([5.1, proto.y - 8.25, 0]) post(6, m2, 5, 3); 
+    translate([proto.x - 5.1, proto.y - 8.25, 0]) post(6, m2, 5, 3); 
+    
+    // m3 center posts
+    translate([7.6, proto.y / 2, 0]) post(6, m3, 5, 3); 
+    translate([proto.x - 7.6, proto.y / 2, 0]) post(6, m3, 5, 3); 
+}
+
+// adafruit protoboard
+module mount_adafruit() {
     $fn = 10;
     cube(proto);
     translate([3, 5, 0]) post(6, m3, 5, 3); 
@@ -113,6 +134,14 @@ module mount() {
     translate([3, proto.y - 5, 0]) post(6, m3, 5, 3); 
 }
 
+module rounded_cutout(height, width, thick, rot = [0,0,0]) {
+    $fn = 24;
+    rotate(rot) translate([height/2, height/2, 0]) union() {
+        cylinder(d=height, h=thick);
+        translate([0, -height/2, 0]) cube([width-height, height, thick]);
+        translate([width-height, 0, 0]) cylinder(d=height, h=thick);        
+    }
+}
 
 module post(od, id, height, depth) {
     $fn = 32;
