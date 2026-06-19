@@ -222,11 +222,12 @@ static void fetchStations(StationSlot slots[2]) {
     }
     if (!mqttSub.connected()) { Serial.println("Stations: MQTT connect failed"); return; }
 
-    mqttSub.subscribe(STATION_0_TOPIC);
-    mqttSub.subscribe(STATION_1_TOPIC);
+    const bool need[2] = { strlen(STATION_0_TOPIC) > 0, strlen(STATION_1_TOPIC) > 0 };
+    if (need[0]) mqttSub.subscribe(STATION_0_TOPIC);
+    if (need[1]) mqttSub.subscribe(STATION_1_TOPIC);
 
     uint32_t deadline = millis() + 5000;
-    while (millis() < deadline && !(s_st.rx[0] && s_st.rx[1])) {
+    while (millis() < deadline && !((s_st.rx[0] || !need[0]) && (s_st.rx[1] || !need[1]))) {
         mqttSub.loop();
         delay(10);
     }
