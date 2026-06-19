@@ -94,6 +94,8 @@ void loadZoneState(int i) {
   if (len == sizeof(buf))
     zoneState[i] = { (bool)buf[0], buf[1], buf[2], buf[3], buf[4] };
   // else: no saved state yet — keep default (off, full white)
+  if (zoneState[i].r == 0 && zoneState[i].g == 0 && zoneState[i].b == 0)
+    zoneState[i].r = zoneState[i].g = zoneState[i].b = 255;
 }
 
 // ── MQTT / WiFi ────────────────────────────────────────────────────────────────
