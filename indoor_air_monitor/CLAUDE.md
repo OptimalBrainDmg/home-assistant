@@ -64,7 +64,7 @@ Copy `secrets.h.example` to `secrets.h` and set WiFi + MQTT broker credentials.
 
 ## MQTT Topics
 
-- Device ID: `"air_" + lower 3 bytes of EfuseMac as hex` (e.g. `air_a1b2c3`)
+- Device ID: `"air_" + lower 4 bytes of EfuseMac as hex` (e.g. `air_a1b2c3d4`)
 - State topic: `home/<deviceId>/state`
 - Discovery topics: `homeassistant/<domain>/<deviceId>/<entity>/config` (retained)
 - MQTT buffer size: 1024 bytes (set via `mqtt.setBufferSize(1024)` before connecting)

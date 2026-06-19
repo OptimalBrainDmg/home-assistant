@@ -117,7 +117,7 @@ void setup() {
   Serial.println("I2C scan done.");
 
   uint64_t mac = ESP.getEfuseMac();
-  deviceId   = "air_" + String((uint32_t)(mac & 0xFFFFFF), HEX);
+  deviceId   = "air_" + String((uint32_t)(mac & 0xFFFFFFFF), HEX);
   stateTopic = "home/" + deviceId + "/state";
   Serial.print("Device ID: "); Serial.println(deviceId);
 
