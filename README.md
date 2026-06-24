@@ -11,7 +11,8 @@ Arduino firmware for DIY devices that integrate with Home Assistant via MQTT aut
 | [`lightstrip`](lightstrip/) | Adafruit HUZZAH32 ESP32 Feather + WS2812B LED strip | Light (on/off, brightness, RGB color) per zone |
 | [`fallout-terminal-pyportal`](fallout-terminal-pyportal/) | Adafruit PyPortal + ADT7410 | Temperature (°C); touch UI for light zones |
 | [`epaper_weather`](epaper_weather/) | LILYGO T5 4.7" e-paper (ESP32-WROVER-E, battery-powered, deep sleep) | Weather dashboard: current conditions + 8-hour forecast from NWS via HA REST API |
-| [`indoor_air_monitor`](indoor_air_monitor/) | Seeed XIAO ESP32C6 + Adafruit 6478 (STCC4+SHT41) + ENS160 (battery-powered, deep sleep) | Temperature (°C), Humidity (%), CO2 (ppm), TVOC (ppb), eCO2 (ppm) |
+| [`indoor_air_monitor`](indoor_air_monitor/) | Seeed XIAO ESP32C6 + Adafruit 6478 (STCC4+SHT41) + ENS160 (always-on) | Temperature (°C), Humidity (%), CO2 (ppm), TVOC (ppb), eCO2 (ppm) |
+| [`printer_room_monitor`](printer_room_monitor/) | Seeed XIAO ESP32C6 + SHT40 + DFRobot Fermion MEMS Smoke sensor (always-on) | Temperature (°C), Humidity (%), Smoke (mV) |
 
 ## Setup
 

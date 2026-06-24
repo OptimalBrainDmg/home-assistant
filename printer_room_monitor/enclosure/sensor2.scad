@@ -1,15 +1,14 @@
+wall = 1.6;
 
 m2 = 1.9;
 m3 = 2.76;
 
-wall = 1.6;
+proto = [50.8, 38.1, wall]; // electrocookie mini
+inner_dims = [64,45];
 
-inner_dims = [100, 58];
-proto = [88.9, 52.1, wall]; // electrocookie
-//proto = [83, 51, wall]; // adafruit
+case(30);
+translate([0, inner_dims.y + 20, 0]) cover(8);
 
-case(45);
-//cover(6);
 
 module cover(height) {
     difference() {
@@ -46,20 +45,14 @@ module cover(height) {
         translate([4.5,inner_dims.y+2*wall-4.5,-0.01]) cylinder(d=head.x,h=head.y);
 
         // breathing slits
-        dia = 1.8;
+        dia = 2.8;
         wp = .6;
-        for (i = [1 : 7]) {
+        translate([8,wall+inner_dims.y/2,0]) slit(dia, inner_dims.y*wp/2);
+        translate([50,wall+inner_dims.y*(1-wp)/2,0]) slit(dia, inner_dims.y*wp/2);
+        for (i = [1 : 4]) {
             translate([i*10,wall+inner_dims.y*(1-wp)/2,0]) slit(dia, inner_dims.y*wp);
         }
 
-    }
-}
-
-module slit(dia, w, a=30) {
-    translate([0,0,-1]) rotate([0,0,-a]) union() {
-        cube([dia, w/cos(a), wall+2]);
-        translate([dia/2,0,0]) cylinder(d=dia, h = wall+2);
-        translate([dia/2,w/cos(a),0]) cylinder(d=dia, h = wall+2);
     }
 }
 
@@ -76,61 +69,32 @@ module case(height) {
                 translate([inner_dims.x+2*wall-4.5,4.5,wall]) cylinder(d=6, h=height);
                 translate([inner_dims.x+2*wall-4.5,inner_dims.y+2*wall-4.5,wall]) cylinder(d=6, h=height);
                 translate([4.5,inner_dims.y+2*wall-4.5,wall]) cylinder(d=6, h=height);
-                
-                // cutout for power adapter
-                translate([-1,wall+(inner_dims.y-11.5)/2,height-15]) cube([5,11.5,18]);
             }
+            
+            // screws for the cover
+            translate([4.5,4.5,0]) post(6, m3, height, height);
+            translate([inner_dims.x+2*wall-4.5,4.5,0]) post(6, m3, height, height);
+            translate([inner_dims.x+2*wall-4.5,inner_dims.y+2*wall-4.5,0]) post(6, m3, height, height);
+            translate([4.5,inner_dims.y+2*wall-4.5,0]) post(6, m3, height, height);  
             
             // screw mounts for protoboard
             translate([wall+(inner_dims.x-proto.x)/2, wall+(inner_dims.y-proto.y)/2, 0]) mount();
-            
-            // screws for the cover
-            translate([4.5,4.5,wall]) post(7, m3, height-wall, 7);
-            translate([inner_dims.x+2*wall-4.5,4.5,wall]) post(7, m3, height-wall, 6);
-            translate([inner_dims.x+2*wall-4.5,inner_dims.y+2*wall-4.5,wall]) post(7, m3, height-wall, 6);
-            translate([4.5,inner_dims.y+2*wall-4.5,wall]) post(7, m3, height-wall, 6);  
-      
-            // extra support for power 
-            translate([wall,wall+(inner_dims.y-15)/2,wall]) cube([3.5,15,height-wall]);            
-
         }
-
-        // cutout for power adapter
-        translate([-1,wall+(inner_dims.y-11.5)/2,height-15]) cube([10,11.5,18]);
         
         // cutout for usb for programming
-        translate([inner_dims.x+wall-0.01, inner_dims.y/2-10+wall,wall+3+10]) rounded_cutout(10,20,5,[90,0,90]);
-
-        // cutouts for the led wires
-        translate([wall+inner_dims.x/2-5,-1,height-12]) rounded_cutout(3,10,wall*2+inner_dims.x+2,[270,0,0]);
-    }
-
-}
-
-// electrocookie
-module mount() {
-    $fn = 10;
-    cube(proto);
-    
-    // m2 corner posts
-    translate([5.1, 8.25, 0]) post(6, m2, 5, 3); 
-    translate([proto.x - 5.1, 8.25, 0]) post(6, m2, 5, 3); 
-    translate([5.1, proto.y - 8.25, 0]) post(6, m2, 5, 3); 
-    translate([proto.x - 5.1, proto.y - 8.25, 0]) post(6, m2, 5, 3); 
-    
-    // m3 center posts
-    translate([7.6, proto.y / 2, 0]) post(6, m3, 5, 3); 
-    translate([proto.x - 7.6, proto.y / 2, 0]) post(6, m3, 5, 3); 
-}
-
-// adafruit protoboard
-module mount_adafruit() {
-    $fn = 10;
-    cube(proto);
-    translate([3, 5, 0]) post(6, m3, 5, 3); 
-    translate([proto.x - 3, 5, 0]) post(6, m3, 5, 3); 
-    translate([proto.x - 3, proto.y - 5, 0]) post(6, m3, 5, 3); 
-    translate([3, proto.y - 5, 0]) post(6, m3, 5, 3); 
+        translate([inner_dims.x+wall-0.01, inner_dims.y/2-10+wall,wall+3]) rounded_cutout(10,20,5,[90,0,90]);
+        
+        // cutout for air vents
+        for (i = [0 : 4]) {
+            translate([16 + 10*i,-0.01,24]) rounded_cutout(6,16,inner_dims.y+2*wall+1,[0,90,90]);
+        }
+        for (i = [0 : 2]) {
+            translate([-1,10*i+10,24]) rounded_cutout(6,16,5,[90,90,90]);
+        }
+        for (i = [0 : 2]) {
+            translate([wall+inner_dims.x-0.01,1+10*i+10,26]) rounded_cutout(6,8,5,[90,90,90]);
+        }
+    }  
 }
 
 module rounded_cutout(height, width, thick, rot = [0,0,0]) {
@@ -141,6 +105,31 @@ module rounded_cutout(height, width, thick, rot = [0,0,0]) {
         translate([width-height, 0, 0]) cylinder(d=height, h=thick);        
     }
 }
+
+module slit(dia, w, a=30, d = wall+2) {
+    translate([0,0,-1]) rotate([0,0,-a]) union() {
+        cube([dia, w/cos(a), d]);
+        translate([dia/2,0,0]) cylinder(d=dia, h = d);
+        translate([dia/2,w/cos(a),0]) cylinder(d=dia, h = d);
+    }
+}
+
+// electrocookie mini
+module mount() {
+    $fn = 10;
+    cube(proto);
+    
+    // m2 corner posts
+    translate([3.15, 3.15, 0]) post(6, m2, 5, 3); 
+    translate([proto.x - 3.15, 3.15, 0]) post(6, m2, 5, 3); 
+    translate([3.15, proto.y - 3.15, 0]) post(6, m2, 5, 3); 
+    translate([proto.x - 3.15, proto.y - 3.15, 0]) post(6, m2, 5, 3); 
+    
+    // m3 center posts
+    translate([5.1, proto.y / 2, 0]) post(6, m3, 5, 3); 
+    translate([proto.x - 5.1, proto.y / 2, 0]) post(6, m3, 5, 3); 
+}
+
 
 module post(od, id, height, depth) {
     $fn = 32;
