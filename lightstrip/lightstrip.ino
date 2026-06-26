@@ -6,6 +6,7 @@
 #include <Adafruit_MCP9808.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
+#include <esp_system.h>   // esp_reset_reason()
 #include "secrets.h"
 
 #define WDT_TIMEOUT_S 90
@@ -49,12 +50,23 @@ static const SegmentConfig SEGMENTS[] = {
 // Scales the full 0–255 brightness range to 0–(MAX_BRIGHTNESS_SCALE * 255).
 // Useful for keeping peak current within the power supply rating.
 // 1.0 = no cap, 0.9 = 90% max output, etc.
-#define MAX_BRIGHTNESS_SCALE 1.0f
+#define MAX_BRIGHTNESS_SCALE 0.75f
 
 // ── Optional MCP9808 temperature sensor ───────────────────────────────────────
 // Detected at runtime via I2C (HUZZAH32: SDA=23, SCL=22).
 // If not found on the bus, temperature reporting is silently skipped.
 #define TEMP_READ_INTERVAL 30000  // ms between temperature publishes
+
+// ── Diagnostics & connection healing ──────────────────────────────────────────
+// The device publishes a diagnostics payload (last reset reason, uptime, WiFi
+// RSSI, free heap, reconnect count) to HA so an inaccessible unit can be
+// debugged remotely — after any lockup/reboot, HA shows WHY it reset.
+#define DIAG_INTERVAL 60000UL              // ms between diagnostics publishes
+// Proactively tear down and rebuild the MQTT connection on this interval. A
+// half-open ("connected but deaf") socket that stops receiving commands while
+// idle is silently healed within one interval instead of wedging until a power
+// cycle. Set to 0 to disable.
+#define MQTT_FORCE_RECONNECT_MS (15UL * 60 * 1000)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // END OF CONFIGURATION
@@ -114,6 +126,13 @@ String           tempStateTopic;
 String           tempDiscoveryTopic;
 unsigned long    lastTempMs   = 0;
 unsigned long    lastMqttOkMs = 0;
+
+// ── Diagnostics ────────────────────────────────────────────────────────────────
+String        diagStateTopic;
+const char*   resetReasonStr       = "Unknown";
+uint16_t      mqttReconnects       = 0;
+unsigned long lastDiagMs           = 0;
+unsigned long lastForceReconnectMs = 0;
 
 // ── Apply LED state for zone i ─────────────────────────────────────────────────
 void applyZone(int i) {
@@ -230,6 +249,64 @@ void publishTempDiscovery() {
   mqtt.publish(tempDiscoveryTopic.c_str(), cfg.c_str(), /*retain=*/true);
 }
 
+// ── Diagnostics ────────────────────────────────────────────────────────────────
+const char* resetReasonName(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_POWERON:   return "Power-on";
+    case ESP_RST_EXT:       return "External pin";
+    case ESP_RST_SW:        return "Software";       // ESP.restart()
+    case ESP_RST_PANIC:     return "Panic/Crash";
+    case ESP_RST_INT_WDT:   return "Interrupt WDT";
+    case ESP_RST_TASK_WDT:  return "Task WDT";       // loop() stalled > WDT_TIMEOUT_S
+    case ESP_RST_WDT:       return "Other WDT";
+    case ESP_RST_DEEPSLEEP: return "Deep sleep";
+    case ESP_RST_BROWNOUT:  return "Brownout";       // power rail sagged
+    case ESP_RST_SDIO:      return "SDIO";
+    default:                return "Unknown";
+  }
+}
+
+// One HA diagnostic sensor reading a key out of the shared diag JSON payload.
+void publishDiagSensor(const char* name, const char* idSuffix, const char* jsonKey,
+                       const char* unit, const char* devClass) {
+  String dev = "{\"identifiers\":[\"" + deviceId + "\"],"
+               "\"name\":\"HUZZAH32 LED Strip\","
+               "\"model\":\"Adafruit HUZZAH32 ESP32 Feather\","
+               "\"manufacturer\":\"Adafruit\"}";
+
+  String cfg = "{\"name\":\"" + String(name) + "\",";
+  if (devClass) cfg += "\"device_class\":\"" + String(devClass) + "\",";
+  if (unit)     cfg += "\"unit_of_measurement\":\"" + String(unit) + "\",";
+  cfg += "\"state_topic\":\"" + diagStateTopic + "\","
+         "\"value_template\":\"{{ value_json." + jsonKey + " }}\","
+         "\"entity_category\":\"diagnostic\","
+         "\"unique_id\":\"" + deviceId + "_" + idSuffix + "\","
+         "\"device\":" + dev + "}";
+
+  String topic = "homeassistant/sensor/" + deviceId + "_" + idSuffix + "/config";
+  mqtt.publish(topic.c_str(), cfg.c_str(), /*retain=*/true);
+}
+
+void publishDiagDiscovery() {
+  publishDiagSensor("Last Reset Reason", "reset",      "reset_reason", nullptr, nullptr);
+  publishDiagSensor("Uptime",            "uptime",     "uptime_s",     "s",     "duration");
+  publishDiagSensor("WiFi Signal",       "rssi",       "rssi",         "dBm",   "signal_strength");
+  publishDiagSensor("Free Heap",         "heap",       "free_heap",    "B",     nullptr);
+  publishDiagSensor("MQTT Reconnects",   "reconnects", "reconnects",   nullptr, nullptr);
+}
+
+void publishDiag() {
+  StaticJsonDocument<256> doc;
+  doc["reset_reason"] = resetReasonStr;
+  doc["uptime_s"]     = (uint32_t)(millis() / 1000);
+  doc["rssi"]         = WiFi.RSSI();
+  doc["free_heap"]    = (uint32_t)ESP.getFreeHeap();
+  doc["reconnects"]   = mqttReconnects;
+  char buf[256];
+  serializeJson(doc, buf);
+  mqtt.publish(diagStateTopic.c_str(), buf, /*retain=*/true);
+}
+
 // ── WiFi ───────────────────────────────────────────────────────────────────────
 void connectWiFi() {
   if (WiFi.status() == WL_CONNECTED) return;
@@ -258,6 +335,7 @@ void connectMQTT() {
     Serial.print("Connecting to MQTT...");
     if (mqtt.connect(deviceId.c_str(), MQTT_USER, MQTT_PASS)) {
       Serial.println(" connected.");
+      mqttReconnects++;
       for (int i = 0; i < (int)NUM_ZONES; i++) {
         bool ok = mqtt.subscribe(commandTopics[i].c_str());
         Serial.println(String("sub ") + commandTopics[i] + (ok ? " OK" : " FAIL"));
@@ -265,6 +343,8 @@ void connectMQTT() {
         publishState(i);
       }
       if (mcp9808Present) publishTempDiscovery();
+      publishDiagDiscovery();
+      publishDiag();
     } else {
       Serial.println(" failed (rc=" + String(mqtt.state()) + "), retry in 5s");
       if (++failures >= 5) {
@@ -281,6 +361,10 @@ void setup() {
   Serial.begin(115200);
 
   deviceId = "huzzah32_" + String((uint32_t)(ESP.getEfuseMac() >> 24), HEX);
+
+  resetReasonStr = resetReasonName(esp_reset_reason());
+  Serial.println(String("Reset reason: ") + resetReasonStr);
+  diagStateTopic = "home/" + deviceId + "/diag";
 
   for (int i = 0; i < (int)NUM_ZONES; i++) {
     loadZoneState(i);
@@ -319,32 +403,52 @@ void setup() {
   connectWiFi();
   mqtt.setServer(MQTT_HOST, MQTT_PORT);
   mqtt.setBufferSize(1024);
-  mqtt.setKeepAlive(30);
+  mqtt.setKeepAlive(15);   // shorter ping interval → faster dead-link detection
   mqtt.setSocketTimeout(10);
   mqtt.setCallback(onMessage);
   connectMQTT();
-  lastMqttOkMs = millis();
+  lastMqttOkMs = lastForceReconnectMs = millis();
 }
 
 // ── Loop ───────────────────────────────────────────────────────────────────────
 void loop() {
   esp_task_wdt_reset();
   connectWiFi();
-  if (!mqtt.connected()) connectMQTT();
-  if (mqtt.loop()) lastMqttOkMs = millis();
-  if (millis() - lastMqttOkMs > 5UL * 60 * 1000) {
+
+  if (!mqtt.connected()) {
+    connectMQTT();   // blocking; re-subscribes and restarts after 5 failures
+    lastForceReconnectMs = millis();
+  }
+
+  unsigned long now = millis();
+
+  // Periodic forced reconnect: drop and rebuild the connection on an interval so
+  // a half-open socket that stopped delivering commands is healed (and topics
+  // re-subscribed) within MQTT_FORCE_RECONNECT_MS instead of wedging until a
+  // power cycle. The reconnect happens on the next loop via connectMQTT().
+  if (MQTT_FORCE_RECONNECT_MS && now - lastForceReconnectMs > MQTT_FORCE_RECONNECT_MS) {
+    Serial.println("Periodic MQTT reconnect");
+    mqtt.disconnect();
+    lastForceReconnectMs = now;
+    return;
+  }
+
+  if (mqtt.loop()) lastMqttOkMs = now;
+  if (now - lastMqttOkMs > 5UL * 60 * 1000) {
     Serial.println("MQTT watchdog — restarting");
     ESP.restart();
   }
 
-  if (mcp9808Present) {
-    unsigned long now = millis();
-    if (now - lastTempMs >= TEMP_READ_INTERVAL) {
-      lastTempMs = now;
-      float temp = mcp9808.readTempC();
-      Serial.println("Temp: " + String(temp, 1) + " C");
-      mqtt.publish(tempStateTopic.c_str(),
-                   ("{\"temperature\":" + String(temp, 1) + "}").c_str());
-    }
+  if (mcp9808Present && now - lastTempMs >= TEMP_READ_INTERVAL) {
+    lastTempMs = now;
+    float temp = mcp9808.readTempC();
+    Serial.println("Temp: " + String(temp, 1) + " C");
+    mqtt.publish(tempStateTopic.c_str(),
+                 ("{\"temperature\":" + String(temp, 1) + "}").c_str());
+  }
+
+  if (now - lastDiagMs >= DIAG_INTERVAL) {
+    lastDiagMs = now;
+    publishDiag();
   }
 }
