@@ -374,6 +374,7 @@ void setup() {
   }
 
   Wire.begin();  // HUZZAH32: SDA=23, SCL=22
+  Wire.setTimeOut(100);  // 100 ms — prevents I2C bus hang from locking up the CPU
   mcp9808Present = mcp9808.begin();
   if (mcp9808Present) {
     mcp9808.setResolution(3);  // 0.0625°C resolution
@@ -397,7 +398,8 @@ void setup() {
 #endif
 
   const esp_task_wdt_config_t wdtCfg = { WDT_TIMEOUT_S * 1000u, 0, true };
-  esp_task_wdt_init(&wdtCfg);
+  if (esp_task_wdt_init(&wdtCfg) == ESP_ERR_INVALID_STATE)
+    esp_task_wdt_reconfigure(&wdtCfg);
   esp_task_wdt_add(NULL);
 
   connectWiFi();
@@ -442,9 +444,13 @@ void loop() {
   if (mcp9808Present && now - lastTempMs >= TEMP_READ_INTERVAL) {
     lastTempMs = now;
     float temp = mcp9808.readTempC();
-    Serial.println("Temp: " + String(temp, 1) + " C");
-    mqtt.publish(tempStateTopic.c_str(),
-                 ("{\"temperature\":" + String(temp, 1) + "}").c_str());
+    if (isnan(temp)) {
+      Serial.println("Temp: read failed");
+    } else {
+      Serial.println("Temp: " + String(temp, 1) + " C");
+      mqtt.publish(tempStateTopic.c_str(),
+                   ("{\"temperature\":" + String(temp, 1) + "}").c_str());
+    }
   }
 
   if (now - lastDiagMs >= DIAG_INTERVAL) {

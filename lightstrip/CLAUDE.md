@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Behavioral Guidelines
+
+- **Do not overclaim.** Without serial output from the device, root cause diagnosis is a hypothesis, not a conclusion. Say so explicitly.
+- **Do not promise that a change fixes a problem** unless you can verify it (e.g. via serial monitor or observable HA behavior change). "This should fix it" is not the same as "this fixes it."
+- **The diagnostic system only works when the device reaches MQTT.** If the device is stuck before that point, retained MQTT payloads are stale and tell you nothing about the current state. Do not treat stale retained data as live data.
+- **Track what changes were made and why.** If a previous session made a change that introduced a regression, own it rather than diagnosing around it.
+
 ## Project Overview
 
 Arduino firmware for an Adafruit HUZZAH32 ESP32 Feather that drives WS2812B LED strips and exposes each zone to Home Assistant as an independent MQTT light (on/off, brightness, RGB color). Supports two mutually exclusive modes selected at compile time.
