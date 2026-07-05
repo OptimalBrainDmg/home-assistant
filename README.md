@@ -12,7 +12,7 @@ Arduino firmware for DIY devices that integrate with Home Assistant via MQTT aut
 | [`fallout-terminal-pyportal`](fallout-terminal-pyportal/) | Adafruit PyPortal + ADT7410 | Temperature (°C); touch UI for light zones |
 | [`epaper_weather`](epaper_weather/) | LILYGO T5 4.7" e-paper (ESP32-WROVER-E, battery-powered, deep sleep) | Weather dashboard: current conditions + 8-hour forecast from NWS via HA REST API |
 | [`indoor_air_monitor`](indoor_air_monitor/) | Seeed XIAO ESP32C6 + Adafruit 6478 (STCC4+SHT41) + ENS160 (always-on) | Temperature (°C), Humidity (%), CO2 (ppm), TVOC (ppb), eCO2 (ppm) |
-| [`printer_room_monitor`](printer_room_monitor/) | Seeed XIAO ESP32C6 + SHT40 + DFRobot Fermion MEMS Smoke sensor (always-on) | Temperature (°C), Humidity (%), Smoke (mV) |
+| [`printer_room_monitor`](printer_room_monitor/) | Seeed XIAO ESP32C6 + SHT40 + DFRobot Fermion MEMS Smoke sensor + Xiaomi LYWSD03MMC × N via BLE (always-on) | Temperature (°C), Humidity (%), Smoke (mV); per-sensor Temperature (°C), Humidity (%), Battery (%) for up to 12 BLE filament sensors |
 | [`xmas`](xmas/) | Seeed XIAO ESP32C6 + SK6812 RGBW NeoPixel strip (89 LEDs, 14 letter zones) | Light (on/off, brightness, 5 animation effects) for MERRY CHRISTMAS sign |
 
 ## Setup
