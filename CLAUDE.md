@@ -20,7 +20,7 @@ Collection of Arduino sketches for ESP8266/ESP32-based sensors and actuators tha
 | `fallout-terminal-pyportal/` | Adafruit PyPortal (SAMD51 + ESP32 WiFi) | Temperature; touch UI for light zones | `adafruit:samd:adafruit_pyportal_m4` |
 | `epaper_weather/` | LILYGO T5 4.7" (ESP32-WROVER-E, deep sleep) | Weather dashboard (REST from NWS/HA) | `esp32:esp32:esp32wrover` |
 | `indoor_air_monitor/` | Seeed XIAO ESP32C6 (always-on) | Temperature, Humidity, CO2, TVOC, eCO2 | `esp32:esp32:XIAO_ESP32C6` |
-| `printer_room_monitor/` | Seeed XIAO ESP32C6 (always-on) | Temperature, Humidity, Smoke (mV) | `esp32:esp32:XIAO_ESP32C6` |
+| `printer_room_monitor/` | Seeed XIAO ESP32C6 (always-on) | Temperature, Humidity, Smoke (mV), BLE filament sensors (T/H/battery) | `esp32:esp32:XIAO_ESP32C6:PartitionScheme=huge_app` |
 | `xmas/` | Seeed XIAO ESP32C6 | MERRY CHRISTMAS sign (on/off, brightness, 5 animation effects) | `esp32:esp32:XIAO_ESP32C6` |
 
 `temp_humidity_sensor_battery/enclosure/sensor.scad` and `lightstrip/enclosure/lightstrip.scad` are parametric OpenSCAD models for 3D-printable enclosures.
