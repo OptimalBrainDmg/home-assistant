@@ -237,13 +237,13 @@ static void publishDiscovery() {
     String sState = "home/" + sId + "/state";
     String label  = String(BLE_SENSOR_LABELS[i]);
     publishSensorConfig(sId, sState, label, "LYWSD03MMC", "Xiaomi",
-                        "temperature", (label + " Temperature").c_str(),
+                        "temperature", "Temperature",
                         "temperature", "°C", "temperature");
     publishSensorConfig(sId, sState, label, "LYWSD03MMC", "Xiaomi",
-                        "humidity",    (label + " Humidity").c_str(),
+                        "humidity",    "Humidity",
                         "humidity",    "%",  "humidity");
     publishSensorConfig(sId, sState, label, "LYWSD03MMC", "Xiaomi",
-                        "battery",     (label + " Battery").c_str(),
+                        "battery",     "Battery",
                         "battery",     "%",  "battery");
   }
 }
