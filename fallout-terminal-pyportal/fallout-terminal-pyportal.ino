@@ -16,6 +16,7 @@
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <Adafruit_ADT7410.h>
+#include <Adafruit_SleepyDog.h>
 
 // ── HARDWARE PINS (PyPortal original) ────────────────────────────────────────
 #define TFT_D0        34
@@ -71,6 +72,14 @@
 #define CLOCK_MS        60000UL   // redraw clock every 1 min (no seconds shown)
 #define RECONN_MS        5000UL   // retry MQTT every 5 s
 #define LIGHTING_TIMEOUT 60000UL  // return to main screen after 1 min idle
+
+// Hardware watchdog: resets the SAMD51 (and, via the NINA co-processor reset
+// pin toggled during WiFiNINA's next init, the ESP32 WiFi chip too) if loop()
+// stops petting it — recovers a full hard lock (e.g. a wedged WiFiNINA SPI
+// call) that requires a power cycle today. 16000 ms is the SAMD51 hardware
+// max (Adafruit_SleepyDog); WiFi.setFeedWatchdogFunc() keeps it petted during
+// WiFiNINA's own internal (up to 50 s) connection-wait loops.
+#define WATCHDOG_TIMEOUT_MS 16000
 
 // ── CREDENTIALS (loaded from /config.jsn on SD card) ────────────────────────
 static char cfgWifiSsid[64];
@@ -458,6 +467,32 @@ static bool loadConfig() {
   return true;
 }
 
+// ── WATCHDOG ──────────────────────────────────────────────────────────────────
+
+// Passed to WiFi.setFeedWatchdogFunc() so WiFiNINA's own internal connection
+// -wait loops (WiFi.begin() can block up to 50 s) keep the hardware watchdog
+// petted instead of tripping it during a legitimate slow connect.
+static void petWatchdog() {
+  Watchdog.reset();
+}
+
+// SAMD51 reset-cause register — printed at boot so a WDT-triggered reset
+// (recovered hard lock) can be told apart from a normal power-on in the
+// serial log. Not published anywhere; read via serial monitor after the
+// fact, same spirit as the lightstrip's reset-reason diagnostic.
+static const char* resetCauseName() {
+  uint8_t cause = RSTC->RCAUSE.reg;
+  if (cause & RSTC_RCAUSE_POR)     return "Power-on";
+  if (cause & RSTC_RCAUSE_BODCORE) return "Brownout (core)";
+  if (cause & RSTC_RCAUSE_BODVDD)  return "Brownout (VDD)";
+  if (cause & RSTC_RCAUSE_NVM)     return "NVM";
+  if (cause & RSTC_RCAUSE_EXT)     return "External reset";
+  if (cause & RSTC_RCAUSE_WDT)     return "Watchdog (recovered hard lock)";
+  if (cause & RSTC_RCAUSE_SYST)    return "System reset request";
+  if (cause & RSTC_RCAUSE_BACKUP)  return "Backup";
+  return "Unknown";
+}
+
 // ── WIFI ──────────────────────────────────────────────────────────────────────
 
 static void connectWiFi() {
@@ -751,6 +786,8 @@ static void handleTouch() {
 
 void setup() {
   Serial.begin(115200);
+  Serial.print("Reset cause: ");
+  Serial.println(resetCauseName());
 
   pinMode(TFT_BACKLIGHT, OUTPUT);
   digitalWrite(TFT_BACKLIGHT, LOW);  // keep off until display is cleared
@@ -779,6 +816,16 @@ void setup() {
   }
   playSound(SOUND_POWERON);
 
+  // Enabled after the fatal SD-halt path above (that halt is intentional —
+  // the device needs a physical fix, not an auto-retry loop) and before the
+  // first WiFi.begin() so a wedged co-processor during initial connect is
+  // also recovered.
+  WiFi.setFeedWatchdogFunc(petWatchdog);
+  int actualTimeoutMs = Watchdog.enable(WATCHDOG_TIMEOUT_MS);
+  Serial.print("Watchdog enabled, timeout ~");
+  Serial.print(actualTimeoutMs);
+  Serial.println(" ms");
+
   connectWiFi();
 
   renderBootMsg("SYNCING REAL-TIME CLOCK...");
@@ -802,6 +849,8 @@ void setup() {
 // ── LOOP ──────────────────────────────────────────────────────────────────────
 
 void loop() {
+  petWatchdog();
+
   // Maintain MQTT
   if (!mqtt.connected()) {
     unsigned long now = millis();
